@@ -243,6 +243,7 @@ export const lt = {
     passwordLower: "Slaptažodyje turi būti mažoji raidė",
     passwordNumber: "Slaptažodyje turi būti skaičius",
     passwordsMismatch: "Slaptažodžiai nesutampa",
+    gradeRequired: "Pasirinkite klasę (1–12)",
     nameRequired: "Vardas privalomas",
     messageMin: "Žinutė turi būti bent 10 simbolių",
   },

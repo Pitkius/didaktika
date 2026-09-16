@@ -55,6 +55,7 @@ export async function registerAction(formData: FormData) {
     password: formData.get("password"),
     confirmPassword: formData.get("confirmPassword"),
     role: formData.get("role") ?? "STUDENT",
+    gradeLevel: formData.get("gradeLevel") || undefined,
     inviteToken: formData.get("inviteToken") || undefined,
   });
 
@@ -95,7 +96,13 @@ export async function registerAction(formData: FormData) {
       schoolId,
       status: UserStatus.ACTIVE,
       ...(role === "STUDENT"
-        ? { studentProfile: { create: {} } }
+        ? {
+            studentProfile: {
+              create: {
+                gradeLevel: parsed.data.gradeLevel ?? null,
+              },
+            },
+          }
         : { teacherProfile: { create: {} } }),
     },
   });

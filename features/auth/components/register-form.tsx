@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { registerFormAction } from "@/features/auth/actions";
 import { FormMessage } from "@/features/auth/components/form-message";
 import { SubmitButton } from "@/features/auth/components/submit-button";
@@ -14,6 +14,7 @@ type RegisterFormProps = { inviteToken?: string };
 
 export function RegisterForm({ inviteToken }: RegisterFormProps) {
   const [state, formAction] = useActionState(registerFormAction, null);
+  const [role, setRole] = useState("STUDENT");
   const isInvite = Boolean(inviteToken);
   const a = lt.auth;
 
@@ -44,14 +45,48 @@ export function RegisterForm({ inviteToken }: RegisterFormProps) {
           </div>
           <div className="space-y-2">
             <Label htmlFor="email">{lt.common.email}</Label>
-            <Input id="email" name="email" type="email" autoComplete="email" placeholder="jusu@mokykla.lt" required />
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              autoComplete="email"
+              placeholder="jusu@mokykla.lt"
+              required
+            />
           </div>
           {!isInvite && (
             <div className="space-y-2">
               <Label htmlFor="role">{a.role}</Label>
-              <select id="role" name="role" defaultValue="STUDENT" className="flex h-10 w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
+              <select
+                id="role"
+                name="role"
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+              >
                 <option value="STUDENT">{a.roleStudent}</option>
                 <option value="TEACHER">{a.roleTeacher}</option>
+              </select>
+            </div>
+          )}
+          {(isInvite || role === "STUDENT") && (
+            <div className="space-y-2">
+              <Label htmlFor="gradeLevel">{lt.student.gradeLevel}</Label>
+              <select
+                id="gradeLevel"
+                name="gradeLevel"
+                required={!isInvite && role === "STUDENT"}
+                defaultValue=""
+                className="flex h-10 w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+              >
+                <option value="" disabled>
+                  {a.selectGrade}
+                </option>
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((g) => (
+                  <option key={g} value={g}>
+                    {lt.student.gradeWithLevel.replace("{level}", String(g))}
+                  </option>
+                ))}
               </select>
             </div>
           )}
@@ -62,13 +97,21 @@ export function RegisterForm({ inviteToken }: RegisterFormProps) {
           </div>
           <div className="space-y-2">
             <Label htmlFor="confirmPassword">{a.confirmPassword}</Label>
-            <Input id="confirmPassword" name="confirmPassword" type="password" autoComplete="new-password" required />
+            <Input
+              id="confirmPassword"
+              name="confirmPassword"
+              type="password"
+              autoComplete="new-password"
+              required
+            />
           </div>
           <SubmitButton>{isInvite ? a.joinSchool : a.signUp}</SubmitButton>
         </form>
         <p className="mt-6 text-center text-sm text-neutral-500">
           {a.hasAccount}{" "}
-          <Link href="/login" className="font-medium text-brand-600 hover:underline">{a.signIn}</Link>
+          <Link href="/login" className="font-medium text-brand-600 hover:underline">
+            {a.signIn}
+          </Link>
         </p>
       </CardContent>
     </Card>

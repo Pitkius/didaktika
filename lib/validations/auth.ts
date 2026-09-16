@@ -19,12 +19,20 @@ export const registerSchema = z
       .regex(/[0-9]/, lt.validation.passwordNumber),
     confirmPassword: z.string(),
     role: z.enum(["STUDENT", "TEACHER"]).default("STUDENT"),
+    gradeLevel: z.coerce.number().int().min(1).max(12).optional(),
     inviteToken: z.string().optional(),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: lt.validation.passwordsMismatch,
     path: ["confirmPassword"],
-  });
+  })
+  .refine(
+    (data) => data.role !== "STUDENT" || data.inviteToken || data.gradeLevel != null,
+    {
+      message: lt.validation.gradeRequired,
+      path: ["gradeLevel"],
+    }
+  );
 
 export const forgotPasswordSchema = z.object({
   email: z.string().email(lt.validation.invalidEmail),

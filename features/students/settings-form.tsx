@@ -54,15 +54,19 @@ export function StudentSettingsForm({
       </div>
       <div>
         <Label htmlFor="gradeLevel">{lt.student.gradeLevel}</Label>
-        <Input
+        <select
           id="gradeLevel"
           name="gradeLevel"
-          type="number"
-          min={1}
-          max={12}
           defaultValue={gradeLevel ?? ""}
-          className="mt-1"
-        />
+          className="mt-1 flex h-10 w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm"
+        >
+          <option value="">{lt.auth.selectGrade}</option>
+          {Array.from({ length: 12 }, (_, i) => i + 1).map((g) => (
+            <option key={g} value={g}>
+              {lt.student.gradeWithLevel.replace("{level}", String(g))}
+            </option>
+          ))}
+        </select>
       </div>
       <Button type="submit" disabled={pending}>
         {pending ? lt.common.saving : lt.student.saveChanges}
