@@ -210,6 +210,7 @@ export const lt = {
     role: "Vaidmuo",
     roleStudent: "Mokinys",
     roleTeacher: "Mokytojas",
+    selectGrade: "Pasirinkite klasę (1–12)",
     rolePrompt: "Esu",
     createAccount: "Sukurti paskyrą",
     joinSchool: "Prisijungti prie mokyklos",
