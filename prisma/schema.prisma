@@ -89,6 +89,15 @@ enum IntegrityRiskLevel {
   HIGH
 }
 
+enum IntegrityEventType {
+  TAB_HIDDEN
+  WINDOW_BLUR
+  PASTE
+  COPY
+  FOCUS_RETURN
+  CONTEXT_MENU
+}
+
 enum NotificationType {
   ASSIGNMENT_DUE
   NEW_ASSIGNMENT
@@ -189,6 +198,7 @@ model User {
   auditLogs             AuditLog[]               @relation("AuditActor")
   integrityFlags        AIIntegrityFlag[]        @relation("IntegrityStudent")
   reviewedFlags         AIIntegrityFlag[]        @relation("IntegrityReviewer")
+  integrityEvents       IntegrityEvent[]
   createdQuestions      Question[]               @relation("QuestionCreator")
   verificationTokens    VerificationToken[]
   passwordResetTokens   PasswordResetToken[]
@@ -456,27 +466,31 @@ model QuestionOption {
 }
 
 model Assignment {
-  id                String             @id @default(cuid())
-  title             String
-  description       String?            @db.Text
-  type              AssignmentType
-  status            AssignmentStatus   @default(DRAFT)
-  aiAssistance      AIAssistanceLevel  @default(GUIDANCE)
-  timeLimitMinutes  Int?
-  dueDate           DateTime?
-  attemptsAllowed   Int                @default(1)
-  classId           String?
-  class             Class?             @relation(fields: [classId], references: [id])
-  subjectId         String?
-  subject           Subject?           @relation(fields: [subjectId], references: [id])
-  topicId           String?
-  topic             Topic?             @relation(fields: [topicId], references: [id])
-  createdById       String
-  createdBy         User               @relation("AssignmentCreator", fields: [createdById], references: [id])
-  schoolId          String?
-  publishedAt       DateTime?
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  id                    String             @id @default(cuid())
+  title                 String
+  description           String?            @db.Text
+  type                  AssignmentType
+  status                AssignmentStatus   @default(DRAFT)
+  aiAssistance          AIAssistanceLevel  @default(GUIDANCE)
+  /// Secure / kontrolinis mode: log blur/paste, hide instant feedback
+  integrityMonitoring   Boolean            @default(false)
+  /// Show correct/incorrect after each answer (false for exams)
+  showResultsImmediately Boolean           @default(true)
+  timeLimitMinutes      Int?
+  dueDate               DateTime?
+  attemptsAllowed       Int                @default(1)
+  classId               String?
+  class                 Class?             @relation(fields: [classId], references: [id])
+  subjectId             String?
+  subject               Subject?           @relation(fields: [subjectId], references: [id])
+  topicId               String?
+  topic                 Topic?             @relation(fields: [topicId], references: [id])
+  createdById           String
+  createdBy             User               @relation("AssignmentCreator", fields: [createdById], references: [id])
+  schoolId              String?
+  publishedAt           DateTime?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
 
   questions   AssignmentQuestion[]
   submissions AssignmentSubmission[]
@@ -517,8 +531,9 @@ model AssignmentSubmission {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
-  attempts        QuestionAttempt[]
-  integrityFlags  AIIntegrityFlag[]
+  attempts         QuestionAttempt[]
+  integrityFlags   AIIntegrityFlag[]
+  integrityEvents  IntegrityEvent[]
 
   @@unique([assignmentId, studentId])
   @@index([studentId])
@@ -667,6 +682,22 @@ model AIInsight {
   createdAt   DateTime @default(now())
 
   @@index([targetType, targetId])
+}
+
+model IntegrityEvent {
+  id           String               @id @default(cuid())
+  submissionId String
+  submission   AssignmentSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  studentId    String
+  student      User                 @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  type         IntegrityEventType
+  metadata     Json?
+  createdAt    DateTime             @default(now())
+
+  @@index([submissionId])
+  @@index([studentId])
+  @@index([type])
+  @@index([createdAt])
 }
 
 model AIIntegrityFlag {

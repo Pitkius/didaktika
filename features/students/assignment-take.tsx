@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -11,12 +11,13 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
   finalizeSubmissionAction,
+  logIntegrityEventAction,
   requestAIHelpAction,
   startOrResumeSubmissionAction,
   submitAssignmentAnswerAction,
 } from "@/features/students/actions";
 import { lt, tStatus } from "@/lib/i18n";
-import { ArrowLeft, Lightbulb } from "lucide-react";
+import { ArrowLeft, Lightbulb, Shield } from "lucide-react";
 
 type QuestionOption = { id: string; content: string };
 type AssignmentQuestion = {
@@ -36,6 +37,9 @@ type Props = {
   title: string;
   description?: string | null;
   aiAssistance: string;
+  integrityMonitoring?: boolean;
+  showResultsImmediately?: boolean;
+  timeLimitMinutes?: number | null;
   questions: AssignmentQuestion[];
 };
 
@@ -43,7 +47,10 @@ export function AssignmentTakeClient({
   assignmentId,
   title,
   description,
-  aiAssistance,
+  aiAssistance: initialAiAssistance,
+  integrityMonitoring: initialMonitoring = false,
+  showResultsImmediately: initialShowResults = true,
+  timeLimitMinutes: initialTimeLimit = null,
   questions,
 }: Props) {
   const router = useRouter();
@@ -61,10 +68,30 @@ export function AssignmentTakeClient({
   const [score, setScore] = useState<{ score: number; maxScore: number } | null>(null);
   const [startTime, setStartTime] = useState(Date.now());
   const [hint, setHint] = useState<string | null>(null);
+  const [aiAssistance, setAiAssistance] = useState(initialAiAssistance);
+  const [integrityMonitoring, setIntegrityMonitoring] = useState(initialMonitoring);
+  const [showResultsImmediately, setShowResultsImmediately] = useState(initialShowResults);
+  const [timeLimitMinutes, setTimeLimitMinutes] = useState(initialTimeLimit);
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  const [blurCount, setBlurCount] = useState(0);
+  const loggingRef = useRef(false);
 
   const current = questions[index];
   const total = questions.length;
-  const progress = total > 0 ? ((answered.size) / total) * 100 : 0;
+  const progress = total > 0 ? (answered.size / total) * 100 : 0;
+
+  const logEvent = useCallback(
+    async (type: string, metadata?: Record<string, unknown>) => {
+      if (!submissionId || readOnly || !integrityMonitoring || loggingRef.current) return;
+      loggingRef.current = true;
+      try {
+        await logIntegrityEventAction({ submissionId, type, metadata });
+      } finally {
+        loggingRef.current = false;
+      }
+    },
+    [submissionId, readOnly, integrityMonitoring]
+  );
 
   const init = useCallback(async () => {
     setLoading(true);
@@ -80,6 +107,19 @@ export function AssignmentTakeClient({
     if (result.score != null && result.maxScore != null) {
       setScore({ score: result.score, maxScore: result.maxScore });
     }
+    if (result.aiAssistance) setAiAssistance(result.aiAssistance);
+    if (typeof result.integrityMonitoring === "boolean") {
+      setIntegrityMonitoring(result.integrityMonitoring);
+    }
+    if (typeof result.showResultsImmediately === "boolean") {
+      setShowResultsImmediately(result.showResultsImmediately);
+    }
+    if (result.timeLimitMinutes != null) {
+      setTimeLimitMinutes(result.timeLimitMinutes);
+      if (!result.readOnly) {
+        setSecondsLeft(result.timeLimitMinutes * 60);
+      }
+    }
     setLoading(false);
     setStartTime(Date.now());
   }, [assignmentId, router]);
@@ -87,6 +127,67 @@ export function AssignmentTakeClient({
   useEffect(() => {
     void init();
   }, [init]);
+
+  // Integrity: tab visibility, blur, paste, copy, context menu
+  useEffect(() => {
+    if (!integrityMonitoring || readOnly || !submissionId) return;
+
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        setBlurCount((c) => c + 1);
+        void logEvent("TAB_HIDDEN");
+      } else {
+        void logEvent("FOCUS_RETURN");
+      }
+    };
+    const onBlur = () => {
+      setBlurCount((c) => c + 1);
+      void logEvent("WINDOW_BLUR");
+    };
+    const onPaste = () => void logEvent("PASTE");
+    const onCopy = () => void logEvent("COPY");
+    const onContextMenu = (e: MouseEvent) => {
+      void logEvent("CONTEXT_MENU");
+      e.preventDefault();
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("blur", onBlur);
+    document.addEventListener("paste", onPaste);
+    document.addEventListener("copy", onCopy);
+    document.addEventListener("contextmenu", onContextMenu);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("blur", onBlur);
+      document.removeEventListener("paste", onPaste);
+      document.removeEventListener("copy", onCopy);
+      document.removeEventListener("contextmenu", onContextMenu);
+    };
+  }, [integrityMonitoring, readOnly, submissionId, logEvent]);
+
+  // Time limit auto-submit
+  useEffect(() => {
+    if (secondsLeft == null || readOnly || !submissionId) return;
+    if (secondsLeft <= 0) {
+      void (async () => {
+        toast.message(lt.student.timeExpired);
+        setFinalizing(true);
+        const result = await finalizeSubmissionAction({ assignmentId, submissionId });
+        setFinalizing(false);
+        if (!result.error) {
+          setReadOnly(true);
+          if (result.score != null && result.maxScore != null) {
+            setScore({ score: result.score, maxScore: result.maxScore });
+          }
+          router.refresh();
+        }
+      })();
+      return;
+    }
+    const t = setTimeout(() => setSecondsLeft((s) => (s == null ? s : s - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [secondsLeft, readOnly, submissionId, assignmentId, router]);
 
   const currentAnswered = useMemo(
     () => (current ? answered.has(current.question.id) : false),
@@ -160,6 +261,12 @@ export function AssignmentTakeClient({
     router.refresh();
   }
 
+  function formatTime(sec: number) {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  }
+
   if (loading) {
     return <p className="text-neutral-500">{lt.common.loading}</p>;
   }
@@ -181,12 +288,34 @@ export function AssignmentTakeClient({
           <h1 className="text-2xl font-semibold">{title}</h1>
           {description && <p className="mt-1 text-neutral-500">{description}</p>}
         </div>
-        {score && (
-          <Badge variant="success">
-            {lt.student.submissionScore}: {Math.round(score.score)} / {Math.round(score.maxScore)}
-          </Badge>
-        )}
+        <div className="flex flex-col items-end gap-2">
+          {secondsLeft != null && !readOnly && (
+            <Badge variant={secondsLeft < 60 ? "danger" : "secondary"}>
+              {lt.student.timeLeft}: {formatTime(secondsLeft)}
+            </Badge>
+          )}
+          {score && (
+            <Badge variant="success">
+              {lt.student.submissionScore}: {Math.round(score.score)} / {Math.round(score.maxScore)}
+            </Badge>
+          )}
+        </div>
       </div>
+
+      {integrityMonitoring && !readOnly && (
+        <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <Shield className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <p className="font-medium">{lt.student.secureModeTitle}</p>
+            <p className="mt-1 text-amber-900/80">{lt.student.secureModeDesc}</p>
+            {blurCount > 0 && (
+              <p className="mt-1 text-xs text-amber-800">
+                {lt.student.secureModeLeaves.replace("{count}", String(blurCount))}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       <Progress value={progress} />
       <p className="text-sm text-neutral-500">
@@ -260,7 +389,15 @@ export function AssignmentTakeClient({
             )}
 
             {feedback && (
-              <p className={`text-sm ${isCorrect ? "text-green-700" : "text-amber-700"}`}>
+              <p
+                className={`text-sm ${
+                  isCorrect == null
+                    ? "text-neutral-600"
+                    : isCorrect
+                      ? "text-green-700"
+                      : "text-amber-700"
+                }`}
+              >
                 {feedback}
               </p>
             )}
@@ -318,6 +455,9 @@ export function AssignmentTakeClient({
       )}
       {readOnly && !score && (
         <p className="text-sm text-neutral-500">{lt.student.alreadySubmitted}</p>
+      )}
+      {readOnly && !showResultsImmediately && score && (
+        <p className="text-sm text-neutral-500">{lt.student.secureSubmittedNote}</p>
       )}
     </div>
   );

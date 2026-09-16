@@ -41,7 +41,10 @@ export default async function TeacherIntegrityPage() {
     include: {
       student: { select: { firstName: true, lastName: true, email: true } },
       submission: {
-        include: { assignment: { select: { title: true } } },
+        include: {
+          assignment: { select: { title: true, integrityMonitoring: true } },
+          integrityEvents: { select: { type: true } },
+        },
       },
     },
     orderBy: { createdAt: "desc" },
@@ -84,6 +87,20 @@ export default async function TeacherIntegrityPage() {
                         {lt.teacher.riskScoreLine.replace("{score}", String(Math.round(flag.riskScore * 100)))} ·{" "}
                         {new Date(flag.createdAt).toLocaleDateString()}
                       </p>
+                      {Array.isArray(flag.indicators) && (flag.indicators as string[]).length > 0 && (
+                        <p className="mt-2 text-xs text-neutral-600">
+                          {lt.teacher.integrityIndicators}:{" "}
+                          {(flag.indicators as string[]).slice(0, 6).join(" · ")}
+                        </p>
+                      )}
+                      {flag.submission?.integrityEvents && flag.submission.integrityEvents.length > 0 && (
+                        <p className="mt-1 text-xs text-neutral-500">
+                          {lt.teacher.integrityEventsCount.replace(
+                            "{count}",
+                            String(flag.submission.integrityEvents.length)
+                          )}
+                        </p>
+                      )}
                     </div>
                     <div className="flex flex-col items-end gap-2">
                       <Badge

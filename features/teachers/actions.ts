@@ -58,9 +58,15 @@ export async function createAssignmentAction(params: {
   timeLimitMinutes?: number;
   attemptsAllowed?: number;
   aiAssistance?: AIAssistanceLevel;
+  integrityMonitoring?: boolean;
+  showResultsImmediately?: boolean;
   questionIds?: string[];
 }) {
   const session = await requireTeacher();
+  const { assignmentSecurityDefaults } = await import(
+    "@/config/assignment-security"
+  );
+  const defaults = assignmentSecurityDefaults(params.type);
 
   const assignment = await db.assignment.create({
     data: {
@@ -71,9 +77,12 @@ export async function createAssignmentAction(params: {
       subjectId: params.subjectId,
       topicId: params.topicId,
       dueDate: params.dueDate ? new Date(params.dueDate) : null,
-      timeLimitMinutes: params.timeLimitMinutes,
-      attemptsAllowed: params.attemptsAllowed ?? 1,
-      aiAssistance: params.aiAssistance ?? "GUIDANCE",
+      timeLimitMinutes: params.timeLimitMinutes ?? defaults.timeLimitMinutes,
+      attemptsAllowed: params.attemptsAllowed ?? defaults.attemptsAllowed,
+      aiAssistance: params.aiAssistance ?? defaults.aiAssistance,
+      integrityMonitoring: params.integrityMonitoring ?? defaults.integrityMonitoring,
+      showResultsImmediately:
+        params.showResultsImmediately ?? defaults.showResultsImmediately,
       createdById: session.user.id,
       schoolId: session.user.schoolId,
       status: "DRAFT",
@@ -95,6 +104,11 @@ export async function createAssignmentAction(params: {
       targetType: "Assignment",
       targetId: assignment.id,
       schoolId: session.user.schoolId,
+      metadata: {
+        type: params.type,
+        integrityMonitoring: assignment.integrityMonitoring,
+        aiAssistance: assignment.aiAssistance,
+      },
     },
   });
 

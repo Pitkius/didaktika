@@ -45,6 +45,9 @@ export default async function StudentAssignmentDetailPage({ params }: PageProps)
         title={assignment.title}
         description={assignment.description}
         aiAssistance={assignment.aiAssistance}
+        integrityMonitoring={assignment.integrityMonitoring}
+        showResultsImmediately={assignment.showResultsImmediately}
+        timeLimitMinutes={assignment.timeLimitMinutes}
         questions={assignment.questions.map((aq) => ({
           id: aq.id,
           points: aq.points,

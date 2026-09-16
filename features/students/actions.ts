@@ -7,9 +7,18 @@ import { adaptiveLearningService } from "@/services/learning/adaptive-learning-s
 import { aiProvider } from "@/services/ai";
 import { entitlementService } from "@/services/entitlements/entitlement-service";
 import { usageService } from "@/services/usage/usage-service";
-import { AIAssistanceLevel, AIHelpLevel } from "@prisma/client";
+import { AIAssistanceLevel, AIHelpLevel, IntegrityEventType } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { lt, tStatus } from "@/lib/i18n";
+
+const INTEGRITY_EVENT_TYPES = new Set<IntegrityEventType>([
+  "TAB_HIDDEN",
+  "WINDOW_BLUR",
+  "PASTE",
+  "COPY",
+  "FOCUS_RETURN",
+  "CONTEXT_MENU",
+]);
 
 export async function submitAnswerAction(params: {
   questionId: string;
@@ -111,6 +120,21 @@ export async function requestAIHelpAction(params: {
       upgradeRequired: true,
       plan: entitlement.plan,
     };
+  }
+
+  // Block AI teacher while a secure assessment is in progress
+  if (!params.assignmentId) {
+    const activeSecure = await db.assignmentSubmission.findFirst({
+      where: {
+        studentId,
+        status: "IN_PROGRESS",
+        assignment: { integrityMonitoring: true },
+      },
+      select: { id: true },
+    });
+    if (activeSecure) {
+      return { error: lt.student.aiBlockedDuringSecure };
+    }
   }
 
   const question = await db.question.findUnique({ where: { id: params.questionId } });
@@ -401,7 +425,56 @@ export async function startOrResumeSubmissionAction(assignmentId: string) {
     readOnly: false,
     answeredQuestionIds: submission.attempts.map((a) => a.questionId),
     aiAssistance: assignment.aiAssistance,
+    integrityMonitoring: assignment.integrityMonitoring,
+    showResultsImmediately: assignment.showResultsImmediately,
+    timeLimitMinutes: assignment.timeLimitMinutes,
   };
+}
+
+export async function logIntegrityEventAction(params: {
+  submissionId: string;
+  type: string;
+  metadata?: Record<string, unknown>;
+}) {
+  const session = await requireStudent();
+  if (!INTEGRITY_EVENT_TYPES.has(params.type as IntegrityEventType)) {
+    return { error: "Invalid event" };
+  }
+
+  const submission = await db.assignmentSubmission.findFirst({
+    where: {
+      id: params.submissionId,
+      studentId: session.user.id,
+      status: "IN_PROGRESS",
+    },
+    include: { assignment: { select: { integrityMonitoring: true } } },
+  });
+  if (!submission) return { error: lt.student.submissionClosed };
+  if (!submission.assignment.integrityMonitoring) {
+    return { success: true, skipped: true };
+  }
+
+  // Rate-limit noisy focus events
+  if (params.type === "FOCUS_RETURN" || params.type === "WINDOW_BLUR") {
+    const recent = await db.integrityEvent.count({
+      where: {
+        submissionId: submission.id,
+        type: params.type as IntegrityEventType,
+        createdAt: { gte: new Date(Date.now() - 3000) },
+      },
+    });
+    if (recent > 0) return { success: true, deduped: true };
+  }
+
+  const { integrityService } = await import("@/services/integrity/integrity-service");
+  await integrityService.logEvent({
+    submissionId: submission.id,
+    studentId: session.user.id,
+    type: params.type as IntegrityEventType,
+    metadata: params.metadata,
+  });
+
+  return { success: true };
 }
 
 export async function submitAssignmentAnswerAction(params: {
@@ -455,7 +528,7 @@ export async function submitAssignmentAnswerAction(params: {
   const pointsEarned = gradeResult.isCorrect ? aq.points : gradeResult.score * aq.points;
 
   let feedback = gradeResult.feedback;
-  if (!gradeResult.isCorrect) {
+  if (!gradeResult.isCorrect && assignment.showResultsImmediately) {
     try {
       const analysis = await aiProvider.analyzeMistake({
         questionContent: aq.question.content,
@@ -489,7 +562,7 @@ export async function submitAssignmentAnswerAction(params: {
       isCorrect: gradeResult.isCorrect,
       score: pointsEarned,
       timeSpentSeconds: params.timeSpentSeconds,
-      feedback,
+      feedback: assignment.showResultsImmediately ? feedback : null,
     },
   });
 
@@ -507,13 +580,16 @@ export async function submitAssignmentAnswerAction(params: {
     data: { timeSpentSeconds: { increment: params.timeSpentSeconds } },
   });
 
+  const showResults = assignment.showResultsImmediately;
+
   return {
     success: true,
-    isCorrect: gradeResult.isCorrect,
-    feedback,
-    explanation: aq.question.explanation,
-    score: pointsEarned,
+    isCorrect: showResults ? gradeResult.isCorrect : null,
+    feedback: showResults ? feedback : lt.student.answerSavedSecure,
+    explanation: showResults ? aq.question.explanation : undefined,
+    score: showResults ? pointsEarned : undefined,
     points: aq.points,
+    showResultsImmediately: showResults,
   };
 }
 
@@ -552,17 +628,27 @@ export async function finalizeSubmissionAction(params: {
   });
 
   try {
-    const { entitlementService } = await import(
-      "@/services/entitlements/entitlement-service"
-    );
-    const integrityAccess = await entitlementService.canUseIntegrity({
-      userId: session.user.id,
-      role: "STUDENT",
-      schoolId: session.user.schoolId,
-    });
-    if (integrityAccess.allowed) {
+    const shouldAnalyze =
+      submission.assignment.integrityMonitoring ||
+      submission.assignment.type === "TEST" ||
+      submission.assignment.type === "EXAM";
+
+    if (shouldAnalyze) {
       const { integrityService } = await import("@/services/integrity/integrity-service");
       await integrityService.analyzeSubmission(submission.id);
+    } else {
+      const { entitlementService } = await import(
+        "@/services/entitlements/entitlement-service"
+      );
+      const integrityAccess = await entitlementService.canUseIntegrity({
+        userId: submission.assignment.createdById,
+        role: "TEACHER",
+        schoolId: session.user.schoolId,
+      });
+      if (integrityAccess.allowed) {
+        const { integrityService } = await import("@/services/integrity/integrity-service");
+        await integrityService.analyzeSubmission(submission.id);
+      }
     }
   } catch (err) {
     console.error("Integrity analysis failed:", err);
