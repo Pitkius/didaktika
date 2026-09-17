@@ -23,6 +23,7 @@ export default async function StudentAssignmentsPage() {
         <SelfStudyAssignments
           limits={selfStudy.limits}
           planName={plan.name}
+          gradeLevel={selfStudy.gradeLevel}
           initialSelections={selfStudy.selections}
           labeled={selfStudy.labeled}
           practices={practices.map((a) => {

@@ -347,15 +347,34 @@ export async function updateStudentSettingsAction(formData: FormData) {
   });
 
   if (gradeLevel) {
+    const nextGrade = parseInt(gradeLevel, 10);
+    const existing = await db.studentProfile.findUnique({
+      where: { userId: session.user.id },
+      select: { selfStudySelections: true, gradeLevel: true },
+    });
+    const { filterSelectionsForGrade } = await import("@/config/curriculum");
+    const raw = Array.isArray(existing?.selfStudySelections)
+      ? (existing!.selfStudySelections as { subjectKey: string; topicKeys: string[] }[])
+      : [];
+    const filtered = filterSelectionsForGrade(raw, nextGrade);
+
     await db.studentProfile.upsert({
       where: { userId: session.user.id },
-      create: { userId: session.user.id, gradeLevel: parseInt(gradeLevel, 10) },
-      update: { gradeLevel: parseInt(gradeLevel, 10) },
+      create: {
+        userId: session.user.id,
+        gradeLevel: nextGrade,
+        selfStudySelections: filtered,
+      },
+      update: {
+        gradeLevel: nextGrade,
+        selfStudySelections: filtered,
+      },
     });
   }
 
   revalidatePath("/student/settings");
   revalidatePath("/student/profile");
+  revalidatePath("/student/assignments");
   return { success: true };
 }
 

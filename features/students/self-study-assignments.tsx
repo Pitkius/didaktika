@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { PLATFORM_CURRICULUM } from "@/config/curriculum";
+import { getCurriculumForGrade, gradeBandLabel } from "@/config/curriculum";
 import type { SelfStudyLimits } from "@/config/self-study";
 import {
   saveSelfStudySelectionsAction,
@@ -33,6 +33,7 @@ type PracticeItem = {
 type Props = {
   limits: SelfStudyLimits;
   planName: string;
+  gradeLevel: number | null;
   initialSelections: { subjectKey: string; topicKeys: string[] }[];
   labeled: LabeledSelection[];
   practices: PracticeItem[];
@@ -41,11 +42,13 @@ type Props = {
 export function SelfStudyAssignments({
   limits,
   planName,
+  gradeLevel,
   initialSelections,
   labeled,
   practices,
 }: Props) {
   const router = useRouter();
+  const curriculum = useMemo(() => getCurriculumForGrade(gradeLevel), [gradeLevel]);
   const [editing, setEditing] = useState(initialSelections.length === 0);
   const [draft, setDraft] = useState<Record<string, string[]>>(() => {
     const map: Record<string, string[]> = {};
@@ -165,6 +168,21 @@ export function SelfStudyAssignments({
               .replace("{subjects}", String(limits.maxSubjects))
               .replace("{topics}", String(limits.maxTopicsPerSubject))}
           </p>
+          {gradeLevel != null && (
+            <p className="mt-2 text-sm font-medium text-brand-700">
+              {lt.student.selfStudyGradeLine
+                .replace("{grade}", String(gradeLevel))
+                .replace("{band}", gradeBandLabel(gradeLevel))}
+            </p>
+          )}
+          {gradeLevel == null && (
+            <p className="mt-2 text-sm text-amber-700">
+              {lt.student.selfStudySetGradeHint}{" "}
+              <Link href="/student/settings" className="font-medium underline">
+                {lt.student.settings}
+              </Link>
+            </p>
+          )}
         </div>
         {!editing && (
           <Button variant="outline" onClick={() => setEditing(true)}>
@@ -184,7 +202,7 @@ export function SelfStudyAssignments({
             </p>
           </CardHeader>
           <CardContent className="space-y-6">
-            {PLATFORM_CURRICULUM.map((subject) => {
+            {curriculum.map((subject) => {
               const selected = subject.key in draft;
               const topicCount = draft[subject.key]?.length ?? 0;
               return (

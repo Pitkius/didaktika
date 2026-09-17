@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import {
+  filterSelectionsForGrade,
   getCurriculumSubject,
   getCurriculumTopic,
   resolveSelectionLabels,
@@ -47,14 +48,17 @@ export async function getSelfStudyContext(userId: string, schoolId: string | nul
 
   const profile = await db.studentProfile.findUnique({
     where: { userId },
-    select: { selfStudySelections: true },
+    select: { selfStudySelections: true, gradeLevel: true },
   });
-  const selections = parseSelections(profile?.selfStudySelections);
+  const rawSelections = parseSelections(profile?.selfStudySelections);
+  const gradeLevel = profile?.gradeLevel ?? null;
+  const selections = filterSelectionsForGrade(rawSelections, gradeLevel);
 
   return {
     independent: true as const,
     plan,
     limits,
+    gradeLevel,
     selections,
     labeled: resolveSelectionLabels(selections),
   };
@@ -81,13 +85,22 @@ export async function saveSelfStudySelections(params: {
     schoolId: params.schoolId,
   });
   const limits = getSelfStudyLimits(plan);
-  const validated = validateSelfStudySelections(params.selections, limits);
+  const profile = await db.studentProfile.findUnique({
+    where: { userId: params.userId },
+    select: { gradeLevel: true },
+  });
+  const validated = validateSelfStudySelections(
+    params.selections,
+    limits,
+    profile?.gradeLevel
+  );
   if (!validated.ok) return { error: validated.error };
 
   await db.studentProfile.upsert({
     where: { userId: params.userId },
     create: {
       userId: params.userId,
+      gradeLevel: profile?.gradeLevel ?? undefined,
       selfStudySelections: params.selections,
     },
     update: {
@@ -170,6 +183,18 @@ export async function startSelfStudyPractice(params: {
   const topic = getCurriculumTopic(params.subjectKey, params.topicKey);
   if (!subject || !topic) return { error: "Nežinomas dalykas arba tema." };
 
+  const { isSelectionAllowedForGrade } = await import("@/config/curriculum");
+  if (
+    !isSelectionAllowedForGrade(
+      { subjectKey: params.subjectKey, topicKeys: [params.topicKey] },
+      ctx.gradeLevel
+    )
+  ) {
+    return {
+      error: `Ši tema netinka ${ctx.gradeLevel ?? "jūsų"} klasės programai. Atnaujinkite pasirinkimus.`,
+    };
+  }
+
   const entitlement = await entitlementService.canGenerateQuestions({
     userId: params.userId,
     role: "STUDENT",
@@ -182,10 +207,14 @@ export async function startSelfStudyPractice(params: {
   const count = Math.min(Math.max(params.questionCount ?? 5, 1), 8);
   const difficulty = await resolveDifficulty(params.userId, params.subjectKey, params.topicKey);
   const type = questionTypeForSubject(params.subjectKey);
+  const gradeHint =
+    ctx.gradeLevel != null
+      ? `Lietuvos ${ctx.gradeLevel} klasė. Klausimai turi atitikti šios klasės mokymo programą.`
+      : "Lietuvos bendrojo ugdymo programa.";
 
   const generated = await aiProvider.generateQuestion({
     subject: subject.name,
-    topic: topic.name,
+    topic: `${topic.name}. ${gradeHint}`,
     difficulty,
     type,
     count,

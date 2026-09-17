@@ -299,10 +299,15 @@ export const lt = {
     noHomeworkIndependent: "Namų darbai skirti mokyklos klasėms. Savarankiškam mokymuisi naudokite skiltį „Užduotys“.",
     noTests: "Testų nėra.",
     noTestsIndependent: "Testai skirti mokyklos klasėms. Savarankiškam mokymuisi naudokite skiltį „Užduotys“.",
-    selfStudyDesc: "Pasirinkite dalykus ir temas — DI paruoš personalizuotas mokymosi užduotis.",
+    selfStudyDesc:
+      "Pasirinkite dalykus ir temas pagal savo klasės Lietuvos mokymo programą — DI paruoš užduotis.",
     selfStudyPlanLine: "Planas: {plan} · iki {subjects} dalykų · iki {topics} temų vienam dalykui",
+    selfStudyGradeLine: "{grade} klasė · {band}",
+    selfStudySetGradeHint: "Nustatykite klasę, kad matytumėte tinkamas temas:",
     selfStudyPickTitle: "Pasirinkite, ko norite mokytis",
-    selfStudyPickHint: "Pasirinkite iki {subjects} dalykų ir kiekvienam — iki {topics} temų.",
+    selfStudyPickHint:
+      "Rodomos tik jūsų klasės programos temos. Pasirinkite iki {subjects} dalykų ir kiekvienam — iki {topics} temų.",
+    settings: "Nustatymai",
     selfStudyAddSubject: "Pridėti",
     selfStudySave: "Išsaugoti pasirinkimus",
     selfStudySaved: "Mokymosi pasirinkimai išsaugoti.",

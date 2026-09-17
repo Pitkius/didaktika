@@ -1,8 +1,10 @@
 import type { SubscriptionPlan } from "@prisma/client";
 import type { SelfStudySelection } from "@/config/curriculum";
 import {
+  getCurriculumForGrade,
   getCurriculumSubject,
   getCurriculumTopic,
+  isSelectionAllowedForGrade,
 } from "@/config/curriculum";
 
 export type SelfStudyLimits = {
@@ -28,7 +30,8 @@ export function getSelfStudyLimits(plan: SubscriptionPlan): SelfStudyLimits {
 
 export function validateSelfStudySelections(
   selections: SelfStudySelection[],
-  limits: SelfStudyLimits
+  limits: SelfStudyLimits,
+  gradeLevel?: number | null
 ): { ok: true } | { ok: false; error: string } {
   if (selections.length === 0) {
     return { ok: false, error: "Pasirinkite bent vieną dalyką." };
@@ -40,6 +43,12 @@ export function validateSelfStudySelections(
     };
   }
 
+  const available =
+    gradeLevel != null ? getCurriculumForGrade(gradeLevel) : null;
+  const availableKeys = available
+    ? new Set(available.map((s) => s.key))
+    : null;
+
   const seenSubjects = new Set<string>();
   for (const sel of selections) {
     if (seenSubjects.has(sel.subjectKey)) {
@@ -50,6 +59,13 @@ export function validateSelfStudySelections(
     const subject = getCurriculumSubject(sel.subjectKey);
     if (!subject) {
       return { ok: false, error: `Nežinomas dalykas: ${sel.subjectKey}` };
+    }
+
+    if (availableKeys && !availableKeys.has(sel.subjectKey)) {
+      return {
+        ok: false,
+        error: `Dalykas „${subject.name}“ nepriklauso ${gradeLevel} klasės programai.`,
+      };
     }
 
     if (sel.topicKeys.length === 0) {
@@ -65,18 +81,33 @@ export function validateSelfStudySelections(
       };
     }
 
+    const gradeTopics = available?.find((s) => s.key === sel.subjectKey)?.topics;
     const seenTopics = new Set<string>();
     for (const topicKey of sel.topicKeys) {
       if (seenTopics.has(topicKey)) {
         return { ok: false, error: "Tema pasirinkta kelis kartus." };
       }
       seenTopics.add(topicKey);
-      if (!getCurriculumTopic(sel.subjectKey, topicKey)) {
+      const topic = getCurriculumTopic(sel.subjectKey, topicKey);
+      if (!topic) {
         return {
           ok: false,
           error: `Nežinoma tema „${topicKey}“ dalykui „${subject.name}“.`,
         };
       }
+      if (gradeTopics && !gradeTopics.some((t) => t.key === topicKey)) {
+        return {
+          ok: false,
+          error: `Tema „${topic.name}“ netinka ${gradeLevel} klasei.`,
+        };
+      }
+    }
+
+    if (gradeLevel != null && !isSelectionAllowedForGrade(sel, gradeLevel)) {
+      return {
+        ok: false,
+        error: `Pasirinkimas netinka ${gradeLevel} klasės programai.`,
+      };
     }
   }
 
