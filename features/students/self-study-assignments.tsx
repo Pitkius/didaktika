@@ -200,6 +200,7 @@ export function SelfStudyAssignments({
                 .replace("{subjects}", String(limits.maxSubjects))
                 .replace("{topics}", String(limits.maxTopicsPerSubject))}
             </p>
+            <p className="text-xs text-neutral-400">{lt.student.selfStudySourcesHint}</p>
           </CardHeader>
           <CardContent className="space-y-6">
             {curriculum.map((subject) => {
@@ -229,6 +230,12 @@ export function SelfStudyAssignments({
                         : lt.student.selfStudyAddSubject}
                     </span>
                   </button>
+                  {selected && subject.textbooks && subject.textbooks.length > 0 && (
+                    <p className="pl-1 text-xs text-neutral-500">
+                      {lt.student.selfStudyTextbooks}:{" "}
+                      {subject.textbooks.map((t) => t.series).join(" · ")}
+                    </p>
+                  )}
                   {selected && (
                     <div className="flex flex-wrap gap-2 pl-1">
                       {subject.topics.map((topic) => {
@@ -237,6 +244,7 @@ export function SelfStudyAssignments({
                           <button
                             key={topic.key}
                             type="button"
+                            title={topic.goal}
                             onClick={() => toggleTopic(subject.key, topic.key)}
                             className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm ${
                               on

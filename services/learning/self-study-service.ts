@@ -209,12 +209,13 @@ export async function startSelfStudyPractice(params: {
   const type = questionTypeForSubject(params.subjectKey);
   const gradeHint =
     ctx.gradeLevel != null
-      ? `Lietuvos ${ctx.gradeLevel} klasė. Klausimai turi atitikti šios klasės mokymo programą.`
-      : "Lietuvos bendrojo ugdymo programa.";
+      ? `Lietuvos ${ctx.gradeLevel} klasė pagal 2022 m. bendrąją programą (BUP). Klausimai privalo atitikti šios klasės lygį.`
+      : "Lietuvos bendrojo ugdymo programa (BUP 2022).";
+  const goalHint = topic.goal ? `Mokymosi tikslas: ${topic.goal}` : "";
 
   const generated = await aiProvider.generateQuestion({
     subject: subject.name,
-    topic: `${topic.name}. ${gradeHint}`,
+    topic: `${topic.name}. ${gradeHint} ${goalHint}`.trim(),
     difficulty,
     type,
     count,

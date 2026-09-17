@@ -306,7 +306,10 @@ export const lt = {
     selfStudySetGradeHint: "Nustatykite klasę, kad matytumėte tinkamas temas:",
     selfStudyPickTitle: "Pasirinkite, ko norite mokytis",
     selfStudyPickHint:
-      "Rodomos tik jūsų klasės programos temos. Pasirinkite iki {subjects} dalykų ir kiekvienam — iki {topics} temų.",
+      "Rodomos tik jūsų klasės BUP temos. Pasirinkite iki {subjects} dalykų ir kiekvienam — iki {topics} temų.",
+    selfStudySourcesHint:
+      "Temos suderintos su 2022 m. bendrosiomis programomis (Emokykla / V-1269). Vadovėlių serijos — rekomendacijos; knygų tekstas nekopijuojamas.",
+    selfStudyTextbooks: "Rekomenduojami vadovėliai / priemonės",
     settings: "Nustatymai",
     selfStudyAddSubject: "Pridėti",
     selfStudySave: "Išsaugoti pasirinkimus",
