@@ -7,7 +7,7 @@ import { adaptiveLearningService } from "@/services/learning/adaptive-learning-s
 import { aiProvider } from "@/services/ai";
 import { entitlementService } from "@/services/entitlements/entitlement-service";
 import { usageService } from "@/services/usage/usage-service";
-import { AIAssistanceLevel, AIHelpLevel, IntegrityEventType } from "@prisma/client";
+import { AIAssistanceLevel, AIHelpLevel, IntegrityEventType, type Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { lt, tStatus } from "@/lib/i18n";
 
@@ -471,7 +471,7 @@ export async function logIntegrityEventAction(params: {
     submissionId: submission.id,
     studentId: session.user.id,
     type: params.type as IntegrityEventType,
-    metadata: params.metadata,
+    metadata: params.metadata as Prisma.InputJsonValue | undefined,
   });
 
   return { success: true };
