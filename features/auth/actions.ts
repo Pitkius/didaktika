@@ -71,7 +71,19 @@ async function schoolHasStudentSeat(tx: Prisma.TransactionClient, schoolId: stri
   return used < limit;
 }
 
+function registerFields(formData: FormData) {
+  return {
+    firstName: String(formData.get("firstName") ?? ""),
+    lastName: String(formData.get("lastName") ?? ""),
+    email: String(formData.get("email") ?? ""),
+    gradeLevel: String(formData.get("gradeLevel") ?? ""),
+    password: String(formData.get("password") ?? ""),
+    confirmPassword: String(formData.get("confirmPassword") ?? ""),
+  };
+}
+
 export async function registerAction(formData: FormData) {
+  const fields = registerFields(formData);
   const parsed = registerSchema.safeParse({
     firstName: formData.get("firstName"),
     lastName: formData.get("lastName"),
@@ -84,12 +96,12 @@ export async function registerAction(formData: FormData) {
   });
 
   if (!parsed.success) {
-    return { error: getZodErrorMessage(parsed.error) };
+    return { error: getZodErrorMessage(parsed.error), fields };
   }
 
   const existing = await db.user.findUnique({ where: { email: parsed.data.email } });
   if (existing) {
-    return { error: lt.auth.emailExists };
+    return { error: lt.auth.emailExists, fields };
   }
 
   const passwordHash = await hashPassword(parsed.data.password);
@@ -162,9 +174,9 @@ export async function registerAction(formData: FormData) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    if (message === "INVITE_EMAIL") return { error: lt.auth.inviteEmailMismatch };
-    if (message === "SEATS") return { error: lt.auth.seatsFull };
-    if (message === "INVITE") return { error: lt.auth.invalidInvite };
+    if (message === "INVITE_EMAIL") return { error: lt.auth.inviteEmailMismatch, fields };
+    if (message === "SEATS") return { error: lt.auth.seatsFull, fields };
+    if (message === "INVITE") return { error: lt.auth.invalidInvite, fields };
     throw error;
   }
 
