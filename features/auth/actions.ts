@@ -23,6 +23,15 @@ import { AuthError } from "next-auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+function isRedirectError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "digest" in error &&
+    String((error as { digest?: unknown }).digest).startsWith("NEXT_REDIRECT")
+  );
+}
+
 export async function loginAction(formData: FormData) {
   const parsed = loginSchema.safeParse({
     email: formData.get("email"),
@@ -45,10 +54,12 @@ export async function loginAction(formData: FormData) {
       redirect: false,
     });
   } catch (error) {
+    if (isRedirectError(error)) throw error;
     if (error instanceof AuthError) {
       return { error: lt.auth.invalidCredentials };
     }
-    throw error;
+    console.error(error);
+    return { error: lt.common.unexpectedError };
   }
 
   const user = await db.user.findUnique({ where: { email: parsed.data.email } });
@@ -99,15 +110,15 @@ export async function registerAction(formData: FormData) {
     return { error: getZodErrorMessage(parsed.error), fields };
   }
 
-  const existing = await db.user.findUnique({ where: { email: parsed.data.email } });
-  if (existing) {
-    return { error: lt.auth.emailExists, fields };
-  }
-
   const passwordHash = await hashPassword(parsed.data.password);
 
   let user: { id: string; email: string; role: UserRole; schoolId: string | null };
   try {
+    const existing = await db.user.findUnique({ where: { email: parsed.data.email } });
+    if (existing) {
+      return { error: lt.auth.emailExists, fields };
+    }
+
     user = await db.$transaction(async (tx) => {
       let schoolId: string | null = null;
       let role: UserRole = "STUDENT";
@@ -177,7 +188,9 @@ export async function registerAction(formData: FormData) {
     if (message === "INVITE_EMAIL") return { error: lt.auth.inviteEmailMismatch, fields };
     if (message === "SEATS") return { error: lt.auth.seatsFull, fields };
     if (message === "INVITE") return { error: lt.auth.invalidInvite, fields };
-    throw error;
+    if (isRedirectError(error)) throw error;
+    console.error(error);
+    return { error: lt.common.unexpectedError, fields };
   }
 
   const verifyToken = generateToken();
