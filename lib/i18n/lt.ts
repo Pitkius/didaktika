@@ -236,6 +236,9 @@ export const lt = {
     needHelp: "Reikia pagalbos? Susisiekite",
     tooManyAttempts: "Per daug bandymų. Palaukite ir bandykite vėliau.",
     emailUnavailable: "El. pašto siuntimas šiuo metu nepasiekiamas.",
+    resetLinkOnPage:
+      "Jei paskyra su šiuo el. paštu yra, atkūrimo nuoroda yra žemiau. Ji galioja 1 valandą. Laiškas neišsiunčiamas, kol neprijungtas el. paštas.",
+    openResetLink: "Keisti slaptažodį",
     teacherInviteOnly: "Mokytojo paskyra kuriama tik su mokyklos kvietimu.",
     inviteEmailMismatch: "Kvietimas skirtas kitam el. pašto adresui.",
     seatsFull: "Pasiektas mokinių vietų limitas.",

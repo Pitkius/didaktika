@@ -68,12 +68,14 @@ export class ResendEmailProvider implements EmailProvider {
 
 export function isRequiredEmailOperational(): boolean {
   if (process.env.NODE_ENV !== "production") return true;
-  return process.env.EMAIL_PROVIDER?.toLowerCase() === "resend" && Boolean(process.env.RESEND_API_KEY);
+  return Boolean(process.env.RESEND_API_KEY);
 }
 
 export function createEmailProvider(): EmailProvider {
   const mode = (process.env.EMAIL_PROVIDER ?? "console").toLowerCase();
-  if (mode === "resend") return new ResendEmailProvider();
+  if (mode === "resend" || (process.env.NODE_ENV === "production" && process.env.RESEND_API_KEY)) {
+    return new ResendEmailProvider();
+  }
   return new ConsoleEmailProvider();
 }
 

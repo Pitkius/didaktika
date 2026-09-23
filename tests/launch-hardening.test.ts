@@ -66,8 +66,9 @@ describe("launch hardening", () => {
     process.env.EMAIL_PROVIDER = "console";
     delete process.env.RESEND_API_KEY;
     expect(isRequiredEmailOperational()).toBe(false);
-    process.env.EMAIL_PROVIDER = "resend";
     process.env.RESEND_API_KEY = "re_test";
+    expect(isRequiredEmailOperational()).toBe(true);
+    process.env.EMAIL_PROVIDER = "resend";
     expect(isRequiredEmailOperational()).toBe(true);
     setNodeEnv(prevEnv);
     process.env.EMAIL_PROVIDER = prevProvider;

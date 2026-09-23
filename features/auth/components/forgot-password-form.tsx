@@ -24,6 +24,14 @@ export function ForgotPasswordForm() {
         {state?.success ? (
           <div className="space-y-4">
             <FormMessage state={state} />
+            {state.resetUrl ? (
+              <Link
+                href={state.resetUrl}
+                className="inline-flex h-10 w-full items-center justify-center rounded-md bg-brand-600 px-4 text-sm font-medium text-white hover:bg-brand-700"
+              >
+                {a.openResetLink}
+              </Link>
+            ) : null}
             <Link href="/login" className="inline-flex h-10 w-full items-center justify-center rounded-md border border-neutral-300 bg-white px-4 text-sm font-medium hover:bg-neutral-50">
               {a.backToLogin}
             </Link>

@@ -20,6 +20,7 @@ import {
 } from "@/lib/validations/auth";
 import { UserRole, UserStatus } from "@prisma/client";
 import { AuthError } from "next-auth";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 export async function loginAction(formData: FormData) {
@@ -217,30 +218,41 @@ export async function forgotPasswordAction(formData: FormData) {
     return { error: lt.auth.tooManyAttempts };
   }
 
-  if (!isRequiredEmailOperational()) {
-    return { error: lt.auth.emailUnavailable };
+  const headerList = await headers();
+  const ip = headerList.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+  const ipLimited = rateLimit(`reset-ip:${ip}`, 10, 60 * 60 * 1000);
+  if (!ipLimited.ok) {
+    return { error: lt.auth.tooManyAttempts };
   }
 
   const user = await db.user.findUnique({ where: { email: parsed.data.email } });
-  if (user) {
-    const token = generateToken();
-    const expires = new Date(Date.now() + 3600000);
+  if (!user) {
+    return {
+      success: true,
+      message: isRequiredEmailOperational() ? lt.auth.resetLinkSent : lt.auth.resetLinkOnPage,
+    };
+  }
+
+  const token = generateToken();
+  const expires = new Date(Date.now() + 3600000);
+  await db.passwordResetToken.deleteMany({ where: { userId: user.id } });
+  await db.passwordResetToken.create({
+    data: { userId: user.id, token: hashToken(token), expires },
+  });
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  const resetUrl = `${appUrl}/reset-password?token=${token}`;
+
+  if (!isRequiredEmailOperational()) {
+    return { success: true, message: lt.auth.resetLinkOnPage, resetUrl };
+  }
+
+  const { emailService } = await import("@/services/email/email-service");
+  try {
+    await emailService.sendPasswordReset(user.email, resetUrl);
+  } catch (error) {
+    console.error("Password reset email failed:", error);
     await db.passwordResetToken.deleteMany({ where: { userId: user.id } });
-    await db.passwordResetToken.create({
-      data: { userId: user.id, token: hashToken(token), expires },
-    });
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    const { emailService } = await import("@/services/email/email-service");
-    try {
-      await emailService.sendPasswordReset(
-        user.email,
-        `${appUrl}/reset-password?token=${token}`
-      );
-    } catch (error) {
-      console.error("Password reset email failed:", error);
-      await db.passwordResetToken.deleteMany({ where: { userId: user.id } });
-      return { error: lt.auth.emailUnavailable };
-    }
+    return { error: lt.auth.emailUnavailable };
   }
 
   return { success: true, message: lt.auth.resetLinkSent };
