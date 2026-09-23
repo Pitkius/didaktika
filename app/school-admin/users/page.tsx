@@ -1,10 +1,11 @@
 import { requireSchoolAdmin } from "@/lib/auth/session";
 import { AppShell } from "@/components/layout/app-sidebar";
 import { db } from "@/lib/db";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Pagination } from "@/components/ui/pagination";
 import { lt, tRole, tStatus } from "@/lib/i18n";
+import { CreateUserForm } from "@/features/school-admin/create-user-form";
 
 interface PageProps {
   searchParams: Promise<{ page?: string }>;
@@ -36,6 +37,15 @@ export default async function SchoolAdminUsersPage({ searchParams }: PageProps) 
           <h1 className="text-2xl font-semibold">{sa.users}</h1>
           <p className="text-neutral-500">{sa.usersCount.replace("{count}", String(total))}</p>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">{sa.users}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CreateUserForm />
+          </CardContent>
+        </Card>
 
         {users.length === 0 ? (
           <Card>

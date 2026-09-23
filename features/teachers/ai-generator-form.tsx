@@ -27,7 +27,7 @@ export function AIGeneratorForm({ subjects }: AIGeneratorFormProps) {
       if (result.success) {
         return { success: true, count: result.questions.length };
       }
-      return { error: lt.teacher.generateFailed };
+      return { error: result.error ?? lt.teacher.generateFailed };
     },
     null
   );

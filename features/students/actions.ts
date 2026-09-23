@@ -7,6 +7,9 @@ import { adaptiveLearningService } from "@/services/learning/adaptive-learning-s
 import { aiProvider } from "@/services/ai";
 import { entitlementService } from "@/services/entitlements/entitlement-service";
 import { usageService } from "@/services/usage/usage-service";
+import { isTimeExpired, secondsRemaining } from "@/lib/assignments/deadline";
+import { toPublicQuestion, visibleQuestionWhere } from "@/lib/learning/question-access";
+import { rateLimit } from "@/lib/security/rate-limit";
 import { AIAssistanceLevel, AIHelpLevel, IntegrityEventType, type Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { lt, tStatus } from "@/lib/i18n";
@@ -25,13 +28,12 @@ export async function submitAnswerAction(params: {
   answer: unknown;
   solutionSteps?: unknown;
   timeSpentSeconds: number;
-  submissionId?: string;
 }) {
   const session = await requireStudent();
   const studentId = session.user.id;
 
-  const question = await db.question.findUnique({
-    where: { id: params.questionId },
+  const question = await db.question.findFirst({
+    where: { id: params.questionId, ...visibleQuestionWhere(studentId, session.user.schoolId) },
     include: { skill: true },
   });
   if (!question) return { error: lt.student.questionNotFound };
@@ -47,7 +49,7 @@ export async function submitAnswerAction(params: {
     data: {
       questionId: params.questionId,
       studentId,
-      submissionId: params.submissionId,
+      submissionId: undefined,
       answer: params.answer as object,
       solutionSteps: params.solutionSteps as object | undefined,
       isCorrect: gradeResult.isCorrect,
@@ -67,22 +69,26 @@ export async function submitAnswerAction(params: {
   }
 
   if (!gradeResult.isCorrect && question.skillId) {
-    const analysis = await aiProvider.analyzeMistake({
-      questionContent: question.content,
-      studentAnswer: params.answer,
-      correctAnswer: question.correctAnswer,
-    });
-    await db.mistake.create({
-      data: {
-        studentId,
-        skillId: question.skillId,
-        attemptId: attempt.id,
-        mistakeType: analysis.mistakeType,
-        description: analysis.description,
-        studentAnswer: params.answer as object,
-        correctAnswer: question.correctAnswer as object,
-      },
-    });
+    try {
+      const analysis = await aiProvider.analyzeMistake({
+        questionContent: question.content,
+        studentAnswer: params.answer,
+        correctAnswer: question.correctAnswer,
+      });
+      await db.mistake.create({
+        data: {
+          studentId,
+          skillId: question.skillId,
+          attemptId: attempt.id,
+          mistakeType: analysis.mistakeType,
+          description: analysis.description,
+          studentAnswer: params.answer as object,
+          correctAnswer: question.correctAnswer as object,
+        },
+      });
+    } catch (error) {
+      console.error("Mistake analysis failed:", error);
+    }
   }
 
   await db.learningEvent.create({
@@ -108,17 +114,19 @@ export async function requestAIHelpAction(params: {
 }) {
   const session = await requireStudent();
   const studentId = session.user.id;
+  const limited = rateLimit(`ai:${studentId}`, 30, 60 * 1000);
+  if (!limited.ok) return { error: lt.auth.tooManyAttempts };
 
-  const entitlement = await entitlementService.canUseAI({
+  const ctx = {
     userId: studentId,
-    role: "STUDENT",
+    role: "STUDENT" as const,
     schoolId: session.user.schoolId,
-  });
-  if (!entitlement.allowed) {
+  };
+  if (!(await entitlementService.hasFeature(ctx, "AI_TEACHER"))) {
     return {
-      error: entitlement.reason ?? lt.billing.limitReached,
+      error: "DI mokytojas neįtrauktas į jūsų planą.",
       upgradeRequired: true,
-      plan: entitlement.plan,
+      plan: await entitlementService.resolvePlan(ctx),
     };
   }
 
@@ -137,44 +145,64 @@ export async function requestAIHelpAction(params: {
     }
   }
 
-  const question = await db.question.findUnique({ where: { id: params.questionId } });
-  if (!question) return { error: lt.student.questionNotFound };
-
   let restrictFinalAnswer = false;
   let aiAssistance: AIAssistanceLevel = "GUIDANCE";
+  let question = await db.question.findFirst({
+    where: { id: params.questionId, ...visibleQuestionWhere(studentId, session.user.schoolId) },
+  });
 
   if (params.assignmentId) {
-    const assignment = await db.assignment.findUnique({
-      where: { id: params.assignmentId },
-    });
-    if (assignment) {
-      aiAssistance = assignment.aiAssistance;
-      if (aiAssistance === "OFF") {
-        return { error: lt.student.aiDisabled };
-      }
-      if (assignment.type === "EXAM" || assignment.type === "TEST") {
-        restrictFinalAnswer = aiAssistance !== "FULL_TUTORING";
-      }
-      if (aiAssistance === "HINTS_ONLY" && params.helpLevel !== "HINT") {
-        return { error: lt.student.hintsOnly };
-      }
+    const assignment = await assertStudentCanAccessAssignment(studentId, params.assignmentId);
+    if (!assignment) return { error: lt.teacher.assignmentNotFound };
+    const linked = assignment.questions.find((item) => item.questionId === params.questionId);
+    if (!linked) return { error: lt.student.questionNotFound };
+    question = linked.question;
+    aiAssistance = assignment.aiAssistance;
+    if (aiAssistance === "OFF") {
+      return { error: lt.student.aiDisabled };
+    }
+    if (assignment.type === "EXAM" || assignment.type === "TEST") {
+      restrictFinalAnswer = aiAssistance !== "FULL_TUTORING";
+    }
+    if (aiAssistance === "HINTS_ONLY" && params.helpLevel !== "HINT") {
+      return { error: lt.student.hintsOnly };
     }
   }
 
-  const hint = await aiProvider.generateHint({
-    questionContent: question.content,
-    helpLevel: params.helpLevel,
-    restrictFinalAnswer,
-    context: { skillId: question.skillId, topicId: question.topicId },
-  });
+  if (!question) return { error: lt.student.questionNotFound };
 
-  await usageService.increment(studentId, "AI_TEACHER_MESSAGES", 1, session.user.schoolId);
+  const limit = await entitlementService.getLimit(ctx, "AI_TEACHER_MESSAGES");
+  const consumed = await usageService.consume(
+    studentId,
+    "AI_TEACHER_MESSAGES",
+    1,
+    limit,
+    session.user.schoolId
+  );
+  if (!consumed.ok) {
+    return { error: lt.billing.limitReached, upgradeRequired: true, plan: await entitlementService.resolvePlan(ctx) };
+  }
 
-  let conversation = params.conversationId
-    ? await db.aIConversation.findUnique({ where: { id: params.conversationId } })
-    : null;
+  let hint: { content: string };
+  try {
+    hint = await aiProvider.generateHint({
+      questionContent: question.content,
+      helpLevel: params.helpLevel,
+      restrictFinalAnswer,
+      context: { skillId: question.skillId, topicId: question.topicId },
+    });
+  } catch (error) {
+    console.error("AI hint failed:", error);
+    return { error: lt.common.unexpectedError };
+  }
 
-  if (!conversation) {
+  let conversation = null;
+  if (params.conversationId) {
+    conversation = await db.aIConversation.findFirst({
+      where: { id: params.conversationId, studentId },
+    });
+    if (!conversation) return { error: lt.student.conversationNotFound };
+  } else {
     conversation = await db.aIConversation.create({
       data: {
         studentId,
@@ -229,10 +257,11 @@ export async function startLearningSessionAction(subjectId?: string) {
   const session = await requireStudent();
   const question = await adaptiveLearningService.selectNextQuestion(
     session.user.id,
-    subjectId
+    subjectId,
+    session.user.schoolId
   );
   if (!question) return { error: lt.student.noQuestions };
-  return { success: true, question };
+  return { success: true, question: toPublicQuestion(question) };
 }
 
 export async function chatWithAIAction(params: {
@@ -241,17 +270,34 @@ export async function chatWithAIAction(params: {
   assignmentId?: string;
 }) {
   const session = await requireStudent();
+  const limited = rateLimit(`ai:${session.user.id}`, 30, 60 * 1000);
+  if (!limited.ok) return { error: lt.auth.tooManyAttempts };
 
-  const entitlement = await entitlementService.canUseAI({
+  const ctx = {
     userId: session.user.id,
-    role: "STUDENT",
+    role: "STUDENT" as const,
     schoolId: session.user.schoolId,
-  });
-  if (!entitlement.allowed) {
+  };
+  if (!(await entitlementService.hasFeature(ctx, "AI_TEACHER"))) {
     return {
-      error: entitlement.reason ?? lt.billing.limitReached,
+      error: "DI mokytojas neįtrauktas į jūsų planą.",
       upgradeRequired: true,
-      plan: entitlement.plan,
+      plan: await entitlementService.resolvePlan(ctx),
+    };
+  }
+  const limit = await entitlementService.getLimit(ctx, "AI_TEACHER_MESSAGES");
+  const consumed = await usageService.consume(
+    session.user.id,
+    "AI_TEACHER_MESSAGES",
+    1,
+    limit,
+    session.user.schoolId
+  );
+  if (!consumed.ok) {
+    return {
+      error: lt.billing.limitReached,
+      upgradeRequired: true,
+      plan: await entitlementService.resolvePlan(ctx),
     };
   }
 
@@ -277,14 +323,13 @@ export async function chatWithAIAction(params: {
     { role: "user", content: params.message },
   ];
 
-  const response = await aiProvider.chat({ messages, systemPrompt });
-
-  await usageService.increment(
-    session.user.id,
-    "AI_TEACHER_MESSAGES",
-    1,
-    session.user.schoolId
-  );
+  let response: string;
+  try {
+    response = await aiProvider.chat({ messages, systemPrompt });
+  } catch (error) {
+    console.error("AI chat failed:", error);
+    return { error: lt.common.unexpectedError };
+  }
 
   await db.aIConversationMessage.createMany({
     data: [
@@ -447,6 +492,7 @@ export async function startOrResumeSubmissionAction(assignmentId: string) {
     integrityMonitoring: assignment.integrityMonitoring,
     showResultsImmediately: assignment.showResultsImmediately,
     timeLimitMinutes: assignment.timeLimitMinutes,
+    secondsRemaining: secondsRemaining(submission.startedAt, assignment.timeLimitMinutes),
   };
 }
 
@@ -517,6 +563,14 @@ export async function submitAssignmentAnswerAction(params: {
   });
   if (!submission) return { error: lt.student.submissionClosed };
 
+  if (isTimeExpired(submission.startedAt, assignment.timeLimitMinutes)) {
+    await db.assignmentSubmission.updateMany({
+      where: { id: submission.id, status: "IN_PROGRESS" },
+      data: { status: "LATE" },
+    });
+    return { error: lt.student.timeExpired };
+  }
+
   const aq = assignment.questions.find((q) => q.questionId === params.questionId);
   if (!aq) return { error: lt.student.questionNotFound };
 
@@ -549,20 +603,29 @@ export async function submitAssignmentAnswerAction(params: {
   let feedback = gradeResult.feedback;
   if (!gradeResult.isCorrect && assignment.showResultsImmediately) {
     try {
-      const analysis = await aiProvider.analyzeMistake({
-        questionContent: aq.question.content,
-        studentAnswer: params.answer,
-        correctAnswer: aq.question.correctAnswer,
-      });
-      feedback = [feedback, analysis.description, analysis.suggestion]
-        .filter(Boolean)
-        .join(" ");
-      await usageService.increment(
+      const ctx = {
+        userId: session.user.id,
+        role: "STUDENT" as const,
+        schoolId: session.user.schoolId,
+      };
+      const limit = await entitlementService.getLimit(ctx, "AI_ANALYSIS");
+      const consumed = await usageService.consume(
         session.user.id,
         "AI_ANALYSIS",
         1,
+        limit,
         session.user.schoolId
       );
+      if (consumed.ok) {
+        const analysis = await aiProvider.analyzeMistake({
+          questionContent: aq.question.content,
+          studentAnswer: params.answer,
+          correctAnswer: aq.question.correctAnswer,
+        });
+        feedback = [feedback, analysis.description, analysis.suggestion].filter(Boolean).join(" ");
+      } else if (aq.question.explanation) {
+        feedback = feedback ? `${feedback} ${aq.question.explanation}` : aq.question.explanation;
+      }
     } catch {
       if (aq.question.explanation) {
         feedback = feedback
@@ -622,7 +685,7 @@ export async function finalizeSubmissionAction(params: {
       id: params.submissionId,
       studentId: session.user.id,
       assignmentId: params.assignmentId,
-      status: "IN_PROGRESS",
+      status: { in: ["IN_PROGRESS", "LATE"] },
     },
     include: {
       attempts: true,
@@ -727,4 +790,48 @@ export async function startSelfStudyPracticeAction(params: {
   if (result.error) return { error: result.error };
   revalidatePath("/student/assignments");
   return { success: true, assignmentId: result.assignmentId };
+}
+
+export async function joinClassByCodeAction(formData: FormData) {
+  const session = await requireStudent();
+  const code = String(formData.get("code") ?? "").trim();
+  if (!code) return { error: lt.student.classCodeInvalid };
+
+  const klass = await db.class.findUnique({ where: { joinCode: code } });
+  if (!klass || klass.status !== "ACTIVE") return { error: lt.student.classCodeInvalid };
+  if (session.user.schoolId && session.user.schoolId !== klass.schoolId) {
+    return { error: lt.student.classCodeWrongSchool };
+  }
+
+  const seats = await entitlementService.canAddStudent({
+    userId: klass.teacherId,
+    role: "TEACHER",
+    schoolId: klass.schoolId,
+  });
+  if (!seats.allowed && !session.user.schoolId) {
+    return { error: seats.reason ?? lt.auth.seatsFull };
+  }
+  if (session.user.schoolId) {
+    const already = await db.classMember.findUnique({
+      where: { classId_userId: { classId: klass.id, userId: session.user.id } },
+    });
+    if (!already && !seats.allowed) return { error: seats.reason ?? lt.auth.seatsFull };
+  }
+
+  await db.$transaction(async (tx) => {
+    if (!session.user.schoolId) {
+      await tx.user.update({
+        where: { id: session.user.id },
+        data: { schoolId: klass.schoolId },
+      });
+    }
+    await tx.classMember.upsert({
+      where: { classId_userId: { classId: klass.id, userId: session.user.id } },
+      create: { classId: klass.id, userId: session.user.id },
+      update: {},
+    });
+  });
+
+  revalidatePath("/student/assignments");
+  return { success: true, message: lt.student.classJoined };
 }

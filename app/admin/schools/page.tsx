@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { lt, tStatus } from "@/lib/i18n";
+import { CreateSchoolForm } from "@/features/admin/create-school-form";
 
 export default async function AdminSchoolsPage() {
   const session = await requireSuperAdmin();
@@ -24,6 +25,8 @@ export default async function AdminSchoolsPage() {
           <h1 className="text-2xl font-semibold">{a.schools}</h1>
           <p className="text-neutral-500">{a.schoolsCount.replace("{count}", String(schools.length))}</p>
         </div>
+
+        <CreateSchoolForm />
 
         {schools.length === 0 ? (
           <Card>

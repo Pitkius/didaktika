@@ -42,15 +42,11 @@ export class EntitlementService {
       if (schoolSub) return schoolSub.plan;
     }
 
-    if (ctx.role === "TEACHER") {
-      const teacherSub = await db.subscription.findFirst({
-        where: { userId: ctx.userId, status: { in: ["ACTIVE", "TRIALING"] } },
-        orderBy: { createdAt: "desc" },
-      });
-      return teacherSub?.plan ?? "TEACHER";
-    }
-
-    return ctx.role === "STUDENT" ? "FREE" : "TEACHER";
+    const personal = await db.subscription.findFirst({
+      where: { userId: ctx.userId, status: { in: ["ACTIVE", "TRIALING"] } },
+      orderBy: { createdAt: "desc" },
+    });
+    return personal?.plan ?? "FREE";
   }
 
   async hasFeature(ctx: EntitlementContext, feature: PlanFeatureKey): Promise<boolean> {

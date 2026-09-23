@@ -8,7 +8,6 @@ import { Progress } from "@/components/ui/progress";
 import { entitlementService } from "@/services/entitlements/entitlement-service";
 import { billingService } from "@/services/billing/billing-service";
 import { getPlanDefinition, formatPlanPrice } from "@/config/plans";
-import { startCheckoutAction } from "@/features/billing/actions";
 import { RedeemLicenseKeyForm } from "@/features/license/redeem-form";
 import { lt, tStatus } from "@/lib/i18n";
 
@@ -57,22 +56,10 @@ export default async function StudentBillingPage() {
                   Būsena: {tStatus(subscription.status)}
                 </p>
               )}
-              <div className="mt-4 flex flex-wrap gap-2">
-                {(["PLUS", "PRO"] as const)
-                  .filter((p) => p !== summary.plan)
-                  .map((planCode) => (
-                    <form key={planCode} action={startCheckoutAction}>
-                      <input type="hidden" name="plan" value={planCode} />
-                      <input type="hidden" name="returnPath" value="/student/billing" />
-                      <Button type="submit" variant={planCode === "PRO" ? "default" : "outline"}>
-                        {lt.billing.upgrade} → {getPlanDefinition(planCode).name}
-                      </Button>
-                    </form>
-                  ))}
-                <Button asChild variant="ghost">
-                  <Link href="/pricing">{lt.billing.manageBilling}</Link>
-                </Button>
-              </div>
+              <p className="text-sm text-neutral-500">{lt.billing.paymentsUnavailable}</p>
+              <Button asChild variant="ghost">
+                <Link href="/pricing">{lt.billing.manageBilling}</Link>
+              </Button>
             </CardContent>
           </Card>
 

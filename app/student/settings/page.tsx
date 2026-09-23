@@ -3,6 +3,7 @@ import { AppShell } from "@/components/layout/app-sidebar";
 import { db } from "@/lib/db";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StudentSettingsForm } from "@/features/students/settings-form";
+import { PrivacyPanel } from "@/features/account/privacy-panel";
 import { lt } from "@/lib/i18n";
 
 export default async function StudentSettingsPage() {
@@ -34,6 +35,11 @@ export default async function StudentSettingsPage() {
               email={user.email}
               gradeLevel={profile?.gradeLevel ?? null}
             />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <PrivacyPanel />
           </CardContent>
         </Card>
       </div>

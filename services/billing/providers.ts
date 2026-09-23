@@ -64,9 +64,30 @@ export class StripeBillingProvider implements BillingProvider {
   }
 }
 
+/** Production never selects mock checkout. Stripe is not wired, so checkout stays closed. */
+export class DisabledBillingProvider implements BillingProvider {
+  name = "disabled";
+
+  isConfigured() {
+    return false;
+  }
+
+  async createCheckoutSession(): Promise<{ url: string; sessionId: string }> {
+    throw new Error("Online checkout is disabled");
+  }
+
+  async createCustomerPortal(): Promise<{ url: string }> {
+    throw new Error("Online checkout is disabled");
+  }
+
+  async cancelSubscription(): Promise<void> {
+    throw new Error("Online checkout is disabled");
+  }
+}
+
 export function getBillingProvider(): BillingProvider {
-  if (process.env.FEATURE_BILLING === "true" && process.env.STRIPE_SECRET_KEY) {
-    return new StripeBillingProvider();
+  if (process.env.NODE_ENV === "production") {
+    return new DisabledBillingProvider();
   }
   return new MockBillingProvider();
 }

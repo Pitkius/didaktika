@@ -3,21 +3,34 @@
 import { requireSchoolAdmin } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
+import { entitlementService } from "@/services/entitlements/entitlement-service";
+import { isRequiredEmailOperational } from "@/services/email/email-service";
 import { revalidatePath } from "next/cache";
-import { UserRole, UserStatus } from "@prisma/client";
+import { UserStatus } from "@prisma/client";
 import { lt } from "@/lib/i18n";
 
 export async function createUserAction(formData: FormData) {
   const session = await requireSchoolAdmin();
+  if (!session.user.schoolId) return { error: lt.schoolAdmin.allFieldsRequired };
 
-  const firstName = formData.get("firstName") as string;
-  const lastName = formData.get("lastName") as string;
-  const email = formData.get("email") as string;
-  const role = formData.get("role") as UserRole;
-  const password = formData.get("password") as string;
+  const firstName = String(formData.get("firstName") ?? "").trim();
+  const lastName = String(formData.get("lastName") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const roleRaw = String(formData.get("role") ?? "");
+  const password = String(formData.get("password") ?? "");
+  const role = roleRaw === "TEACHER" || roleRaw === "STUDENT" ? roleRaw : null;
 
   if (!firstName || !lastName || !email || !role || !password) {
     return { error: lt.schoolAdmin.allFieldsRequired };
+  }
+
+  if (role === "STUDENT") {
+    const seats = await entitlementService.canAddStudent({
+      userId: session.user.id,
+      role: session.user.role,
+      schoolId: session.user.schoolId,
+    });
+    if (!seats.allowed) return { error: seats.reason ?? lt.auth.seatsFull };
   }
 
   const existing = await db.user.findUnique({ where: { email } });
@@ -58,8 +71,8 @@ export async function deactivateUserAction(userId: string) {
   const session = await requireSchoolAdmin();
 
   await db.user.updateMany({
-    where: { id: userId, schoolId: session.user.schoolId },
-    data: { status: UserStatus.INACTIVE },
+    where: { id: userId, schoolId: session.user.schoolId, role: { not: "SUPER_ADMIN" } },
+    data: { status: UserStatus.INACTIVE, authVersion: { increment: 1 } },
   });
 
   await db.auditLog.create({
@@ -117,6 +130,49 @@ export async function revokeInvitationAction(invitationId: string) {
     where: { id: invitationId, schoolId: session.user.schoolId!, status: "PENDING" },
     data: { status: "REVOKED" },
   });
+
+  revalidatePath("/school-admin/invitations");
+  return { success: true };
+}
+
+export async function createInvitationAction(formData: FormData) {
+  const session = await requireSchoolAdmin();
+  if (!session.user.schoolId) return { error: lt.schoolAdmin.allFieldsRequired };
+  if (!isRequiredEmailOperational()) return { error: lt.auth.emailUnavailable };
+
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const roleRaw = String(formData.get("role") ?? "STUDENT");
+  const role = roleRaw === "TEACHER" ? "TEACHER" : "STUDENT";
+  if (!email.includes("@")) return { error: lt.validation.invalidEmail };
+
+  if (role === "STUDENT") {
+    const seats = await entitlementService.canAddStudent({
+      userId: session.user.id,
+      role: session.user.role,
+      schoolId: session.user.schoolId,
+    });
+    if (!seats.allowed) return { error: seats.reason ?? lt.auth.seatsFull };
+  }
+
+  const invitation = await db.invitation.create({
+    data: {
+      email,
+      role,
+      schoolId: session.user.schoolId,
+      sentById: session.user.id,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const { emailService } = await import("@/services/email/email-service");
+  try {
+    await emailService.sendInvitation(email, `${appUrl}/register?token=${invitation.token}`);
+  } catch (error) {
+    console.error("Invitation email failed:", error);
+    await db.invitation.delete({ where: { id: invitation.id } });
+    return { error: lt.auth.emailUnavailable };
+  }
 
   revalidatePath("/school-admin/invitations");
   return { success: true };

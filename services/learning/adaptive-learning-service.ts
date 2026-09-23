@@ -141,7 +141,7 @@ export class AdaptiveLearningService {
     return "WEAK";
   }
 
-  async selectNextQuestion(studentId: string, subjectId?: string) {
+  async selectNextQuestion(studentId: string, subjectId?: string, schoolId?: string | null) {
     const weakSkills = await this.identifyWeakSkills(studentId, 3);
     const targetSkill = weakSkills[0];
 
@@ -149,8 +149,13 @@ export class AdaptiveLearningService {
       ? await this.getNextDifficulty(studentId, targetSkill.skillId)
       : "MEDIUM";
 
+    const scope = {
+      isArchived: false as const,
+      OR: [{ schoolId: null }, ...(schoolId ? [{ schoolId }] : [])],
+    };
+
     const where: Record<string, unknown> = {
-      isArchived: false,
+      ...scope,
       difficulty,
     };
     if (subjectId) where.subjectId = subjectId;
@@ -164,7 +169,7 @@ export class AdaptiveLearningService {
 
     if (questions.length === 0) {
       return db.question.findFirst({
-        where: { isArchived: false, ...(subjectId ? { subjectId } : {}) },
+        where: { ...scope, ...(subjectId ? { subjectId } : {}) },
         include: { options: true, skill: true, topic: true },
       });
     }

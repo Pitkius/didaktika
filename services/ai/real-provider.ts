@@ -1,4 +1,13 @@
-import type { AIProvider } from "./types";
+import type {
+  AIProvider,
+  GeneratedQuestion,
+  GradeResult,
+  IntegrityAnalysis,
+  LearningRecommendation,
+  MistakeAnalysis,
+  TeacherInsight,
+  UnderstandingCheck,
+} from "./types";
 
 export class RealAIProvider implements AIProvider {
   private apiKey: string;
@@ -37,6 +46,14 @@ export class RealAIProvider implements AIProvider {
     return data.choices[0]?.message?.content ?? "";
   }
 
+  private parseJson<T>(raw: string, label: string): T {
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      throw new Error(`Failed to parse AI ${label}`);
+    }
+  }
+
   async generateQuestion(params: {
     subject: string;
     topic: string;
@@ -44,15 +61,11 @@ export class RealAIProvider implements AIProvider {
     difficulty: string;
     type: string;
     count?: number;
-  }) {
+  }): Promise<GeneratedQuestion[]> {
     const systemPrompt = `You are an expert ${params.subject} teacher. Generate educational questions in JSON format.`;
     const userPrompt = `Generate ${params.count ?? 1} ${params.difficulty} ${params.type} question(s) about ${params.topic}. Return JSON array.`;
     const result = await this.callAPI(systemPrompt, userPrompt);
-    try {
-      return JSON.parse(result);
-    } catch {
-      throw new Error("Failed to parse AI-generated questions");
-    }
+    return this.parseJson<GeneratedQuestion[]>(result, "questions");
   }
 
   async gradeAnswer(params: {
@@ -60,11 +73,11 @@ export class RealAIProvider implements AIProvider {
     correctAnswer: unknown;
     studentAnswer: unknown;
     gradingConfig?: Record<string, unknown>;
-  }) {
+  }): Promise<GradeResult> {
     const systemPrompt = "You are a grading assistant. Return JSON with isCorrect, score, feedback.";
     const userPrompt = `Grade this ${params.questionType} answer. Correct: ${JSON.stringify(params.correctAnswer)}. Student: ${JSON.stringify(params.studentAnswer)}.`;
     const result = await this.callAPI(systemPrompt, userPrompt);
-    return JSON.parse(result);
+    return this.parseJson<GradeResult>(result, "grade");
   }
 
   async generateHint(params: {
@@ -87,47 +100,47 @@ export class RealAIProvider implements AIProvider {
     questionContent: string;
     studentAnswer: unknown;
     correctAnswer: unknown;
-  }) {
+  }): Promise<MistakeAnalysis> {
     const result = await this.callAPI(
       "Analyze the student's mistake. Return JSON with mistakeType, description, suggestion.",
       `Question: ${params.questionContent}\nCorrect: ${JSON.stringify(params.correctAnswer)}\nStudent: ${JSON.stringify(params.studentAnswer)}`
     );
-    return JSON.parse(result);
+    return this.parseJson<MistakeAnalysis>(result, "mistake analysis");
   }
 
-  async generateLearningRecommendation(params: { studentContext: Record<string, unknown> }) {
+  async generateLearningRecommendation(params: { studentContext: Record<string, unknown> }): Promise<LearningRecommendation> {
     const result = await this.callAPI(
       "Generate a personalized learning recommendation. Return JSON with content, priority.",
       JSON.stringify(params.studentContext)
     );
-    return JSON.parse(result);
+    return this.parseJson<LearningRecommendation>(result, "recommendation");
   }
 
-  async generateTeacherInsight(params: { classContext: Record<string, unknown> }) {
+  async generateTeacherInsight(params: { classContext: Record<string, unknown> }): Promise<TeacherInsight> {
     const result = await this.callAPI(
       "Analyze class performance data. Return JSON with content, insightType, metadata.",
       JSON.stringify(params.classContext)
     );
-    return JSON.parse(result);
+    return this.parseJson<TeacherInsight>(result, "insight");
   }
 
-  async analyzeIntegrity(params: { submissionContext: Record<string, unknown> }) {
+  async analyzeIntegrity(params: { submissionContext: Record<string, unknown> }): Promise<IntegrityAnalysis> {
     const result = await this.callAPI(
       "Analyze submission for integrity risk signals. Return JSON with riskLevel, riskScore, indicators. Never accuse — only flag signals.",
       JSON.stringify(params.submissionContext)
     );
-    return JSON.parse(result);
+    return this.parseJson<IntegrityAnalysis>(result, "integrity analysis");
   }
 
   async generateUnderstandingCheck(params: {
     questionContent: string;
     studentAnswer: unknown;
-  }) {
+  }): Promise<UnderstandingCheck> {
     const result = await this.callAPI(
       "Generate an understanding check question. Return JSON with question, expectedConcepts.",
       `Question: ${params.questionContent}\nAnswer: ${JSON.stringify(params.studentAnswer)}`
     );
-    return JSON.parse(result);
+    return this.parseJson<UnderstandingCheck>(result, "understanding check");
   }
 
   async chat(params: {
@@ -149,7 +162,10 @@ export class RealAIProvider implements AIProvider {
         temperature: 0.7,
       }),
     });
+    if (!response.ok) {
+      throw new Error(`AI API error: ${response.statusText}`);
+    }
     const data = await response.json();
-    return data.choices[0]?.message?.content ?? "";
+    return data.choices?.[0]?.message?.content ?? "";
   }
 }

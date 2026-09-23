@@ -12,6 +12,7 @@ declare module "next-auth" {
       lastName: string;
       role: UserRole;
       schoolId: string | null;
+      authVersion: number;
     };
   }
 
@@ -20,6 +21,7 @@ declare module "next-auth" {
     lastName: string;
     role: UserRole;
     schoolId: string | null;
+    authVersion: number;
   }
 }
 
@@ -30,6 +32,7 @@ declare module "next-auth/jwt" {
     schoolId: string | null;
     firstName: string;
     lastName: string;
+    authVersion: number;
   }
 }
 

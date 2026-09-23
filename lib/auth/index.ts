@@ -4,6 +4,7 @@ import { authConfig } from "@/lib/auth/auth.config";
 import { verifyPassword } from "@/lib/auth/password";
 import { db } from "@/lib/db";
 import { loginSchema } from "@/lib/validations/auth";
+import { rateLimit } from "@/lib/security/rate-limit";
 import { UserStatus } from "@prisma/client";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -21,6 +22,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!parsed.success) return null;
 
         const { email, password } = parsed.data;
+        const limited = rateLimit(`login:${email}`, 5, 15 * 60 * 1000);
+        if (!limited.ok) return null;
+
         const user = await db.user.findUnique({ where: { email } });
         if (!user || !user.passwordHash) return null;
         if (user.status === UserStatus.SUSPENDED) return null;
@@ -52,6 +56,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           lastName: user.lastName,
           role: user.role,
           schoolId: user.schoolId,
+          authVersion: user.authVersion,
         };
       },
     }),

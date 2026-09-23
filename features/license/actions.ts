@@ -5,6 +5,7 @@ import type { SubscriptionPlan } from "@prisma/client";
 import { requireAuth, requireSuperAdmin } from "@/lib/auth/session";
 import { licenseKeyService } from "@/services/license/license-key-service";
 import { PLAN_DEFINITIONS } from "@/config/plans";
+import { rateLimit } from "@/lib/security/rate-limit";
 import { lt } from "@/lib/i18n";
 
 const redeemablePlans = PLAN_DEFINITIONS.map((p) => p.code).filter(
@@ -54,6 +55,8 @@ export async function redeemLicenseKeyAction(
   formData: FormData
 ): Promise<{ error?: string; success?: string }> {
   const session = await requireAuth();
+  const limited = rateLimit(`redeem:${session.user.id}`, 10, 15 * 60 * 1000);
+  if (!limited.ok) return { error: lt.auth.tooManyAttempts };
   const code = String(formData.get("code") ?? "");
   const returnPath = String(formData.get("returnPath") ?? "/student/billing");
 

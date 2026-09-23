@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { lt, tStatus } from "@/lib/i18n";
+import { JoinClassForm } from "@/features/students/join-class-form";
 
 export default async function StudentAssignmentsPage() {
   const session = await requireStudent();
@@ -20,7 +21,9 @@ export default async function StudentAssignmentsPage() {
 
     return (
       <AppShell area="student" userName={`${session.user.firstName} ${session.user.lastName}`}>
-        <SelfStudyAssignments
+        <div className="space-y-6">
+          <JoinClassForm />
+          <SelfStudyAssignments
           limits={selfStudy.limits}
           planName={plan.name}
           gradeLevel={selfStudy.gradeLevel}
@@ -38,6 +41,7 @@ export default async function StudentAssignmentsPage() {
             };
           })}
         />
+        </div>
       </AppShell>
     );
   }
@@ -54,6 +58,7 @@ export default async function StudentAssignmentsPage() {
           <h1 className="text-2xl font-semibold">{lt.nav.student.assignments}</h1>
           <p className="mt-1 text-neutral-500">{lt.student.assignmentsDesc}</p>
         </div>
+        <JoinClassForm />
 
         {assignments.length === 0 ? (
           <Card>

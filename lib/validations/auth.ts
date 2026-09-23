@@ -2,15 +2,15 @@ import { z } from "zod";
 import { lt } from "@/lib/i18n";
 
 export const loginSchema = z.object({
-  email: z.string().email(lt.validation.invalidEmail),
+  email: z.string().trim().toLowerCase().email(lt.validation.invalidEmail),
   password: z.string().min(1, lt.validation.passwordRequired),
 });
 
 export const registerSchema = z
   .object({
-    firstName: z.string().min(1, lt.validation.firstNameRequired).max(50),
-    lastName: z.string().min(1, lt.validation.lastNameRequired).max(50),
-    email: z.string().email(lt.validation.invalidEmail),
+    firstName: z.string().trim().min(1, lt.validation.firstNameRequired).max(50),
+    lastName: z.string().trim().min(1, lt.validation.lastNameRequired).max(50),
+    email: z.string().trim().toLowerCase().email(lt.validation.invalidEmail),
     password: z
       .string()
       .min(8, lt.validation.passwordMin)
@@ -18,7 +18,7 @@ export const registerSchema = z
       .regex(/[a-z]/, lt.validation.passwordLower)
       .regex(/[0-9]/, lt.validation.passwordNumber),
     confirmPassword: z.string(),
-    role: z.enum(["STUDENT", "TEACHER"]).default("STUDENT"),
+    role: z.enum(["STUDENT"]).default("STUDENT"),
     gradeLevel: z.coerce.number().int().min(1).max(12).optional(),
     inviteToken: z.string().optional(),
   })
@@ -35,7 +35,7 @@ export const registerSchema = z
   );
 
 export const forgotPasswordSchema = z.object({
-  email: z.string().email(lt.validation.invalidEmail),
+  email: z.string().trim().toLowerCase().email(lt.validation.invalidEmail),
 });
 
 export const resetPasswordSchema = z

@@ -38,6 +38,7 @@ export const authConfig = {
         token.schoolId = user.schoolId;
         token.firstName = user.firstName;
         token.lastName = user.lastName;
+        token.authVersion = user.authVersion ?? 0;
       }
       return token;
     },
@@ -48,6 +49,7 @@ export const authConfig = {
         session.user.schoolId = token.schoolId as string | null;
         session.user.firstName = token.firstName as string;
         session.user.lastName = token.lastName as string;
+        session.user.authVersion = Number(token.authVersion ?? 0);
       }
       return session;
     },

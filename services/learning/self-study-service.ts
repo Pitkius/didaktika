@@ -12,7 +12,9 @@ import {
 } from "@/config/self-study";
 import { entitlementService } from "@/services/entitlements/entitlement-service";
 import { aiProvider } from "@/services/ai";
+import type { GeneratedQuestion } from "@/services/ai/types";
 import { usageService } from "@/services/usage/usage-service";
+import { pickPracticeItems } from "@/content/practice-bank";
 import type { Difficulty, QuestionType, SubscriptionPlan } from "@prisma/client";
 
 function parseSelections(raw: unknown): SelfStudySelection[] {
@@ -195,16 +197,27 @@ export async function startSelfStudyPractice(params: {
     };
   }
 
-  const entitlement = await entitlementService.canGenerateQuestions({
-    userId: params.userId,
-    role: "STUDENT",
-    schoolId: params.schoolId,
+  const count = Math.min(Math.max(params.questionCount ?? 5, 1), 8);
+  const bankItems = pickPracticeItems({
+    subjectKey: params.subjectKey,
+    topicKey: params.topicKey,
+    grade: ctx.gradeLevel,
+    count,
+    seed: `${params.userId}:${new Date().toISOString().slice(0, 10)}`,
   });
-  if (!entitlement.allowed) {
-    return { error: entitlement.reason ?? "Pasiektas DI klausimų limitas." };
+  const fromBank = bankItems.length > 0;
+
+  if (!fromBank) {
+    const entitlement = await entitlementService.canGenerateQuestions({
+      userId: params.userId,
+      role: "STUDENT",
+      schoolId: params.schoolId,
+    });
+    if (!entitlement.allowed) {
+      return { error: entitlement.reason ?? "Pasiektas DI klausimų limitas." };
+    }
   }
 
-  const count = Math.min(Math.max(params.questionCount ?? 5, 1), 8);
   const difficulty = await resolveDifficulty(params.userId, params.subjectKey, params.topicKey);
   const type = questionTypeForSubject(params.subjectKey);
   const gradeHint =
@@ -213,13 +226,23 @@ export async function startSelfStudyPractice(params: {
       : "Lietuvos bendrojo ugdymo programa (BUP 2022).";
   const goalHint = topic.goal ? `Mokymosi tikslas: ${topic.goal}` : "";
 
-  const generated = await aiProvider.generateQuestion({
-    subject: subject.name,
-    topic: `${topic.name}. ${gradeHint} ${goalHint}`.trim(),
-    difficulty,
-    type,
-    count,
-  });
+  const generated: GeneratedQuestion[] = fromBank
+    ? bankItems.map((item) => ({
+        type: item.type,
+        difficulty: item.difficulty,
+        content: item.content,
+        explanation: item.explanation,
+        correctAnswer: item.correctAnswer ?? {},
+        options: item.options,
+        gradingConfig: item.gradingConfig,
+      }))
+    : await aiProvider.generateQuestion({
+        subject: subject.name,
+        topic: `${topic.name}. ${gradeHint} ${goalHint}`.trim(),
+        difficulty,
+        type,
+        count,
+      });
 
   if (generated.length === 0) {
     return { error: "Nepavyko sugeneruoti užduočių. Bandykite dar kartą." };
@@ -228,8 +251,9 @@ export async function startSelfStudyPractice(params: {
   const assignment = await db.assignment.create({
     data: {
       title: `${subject.name}: ${topic.name}`,
-      description:
-        "DI sugeneruota mokymosi praktika pagal jūsų pasirinkimą. Po kiekvieno atsakymo gausite grįžtamąjį ryšį.",
+      description: fromBank
+        ? "Praktika pagal bendrąją programą. Užduotys originalios, VBE ir olimpiadų formos. Oficialūs egzaminų variantai lieka nsa.smsm.lt."
+        : "DI sugeneruota mokymosi praktika pagal jūsų pasirinkimą. Po kiekvieno atsakymo gausite grįžtamąjį ryšį.",
       type: "PRACTICE",
       status: "PUBLISHED",
       aiAssistance: "FULL_TUTORING",
@@ -254,9 +278,10 @@ export async function startSelfStudyPractice(params: {
         gradingConfig: g.gradingConfig as object,
         createdById: params.userId,
         schoolId: null,
-        isAIGenerated: true,
+        isAIGenerated: !fromBank,
         metadata: {
           selfStudy: true,
+          practiceBank: fromBank,
           subjectKey: params.subjectKey,
           topicKey: params.topicKey,
           subjectName: subject.name,
@@ -296,26 +321,28 @@ export async function startSelfStudyPractice(params: {
     });
   }
 
-  await usageService.increment(
-    params.userId,
-    "AI_QUESTION_GENERATION",
-    generated.length,
-    params.schoolId
-  );
+  if (!fromBank) {
+    await usageService.increment(
+      params.userId,
+      "AI_QUESTION_GENERATION",
+      generated.length,
+      params.schoolId
+    );
 
-  await db.aIInteraction.create({
-    data: {
-      userId: params.userId,
-      type: "AI_GENERATION",
-      metadata: {
-        selfStudy: true,
-        subjectKey: params.subjectKey,
-        topicKey: params.topicKey,
-        count: generated.length,
-        difficulty,
+    await db.aIInteraction.create({
+      data: {
+        userId: params.userId,
+        type: "AI_GENERATION",
+        metadata: {
+          selfStudy: true,
+          subjectKey: params.subjectKey,
+          topicKey: params.topicKey,
+          count: generated.length,
+          difficulty,
+        },
       },
-    },
-  });
+    });
+  }
 
   await db.learningEvent.create({
     data: {

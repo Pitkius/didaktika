@@ -7,6 +7,10 @@ import {
 } from "@/services/email/email-service";
 import { roleDashboardPaths } from "@/lib/auth/roles";
 
+function setNodeEnv(value: string | undefined) {
+  (process.env as { NODE_ENV?: string }).NODE_ENV = value;
+}
+
 describe("Mock billing provider", () => {
   it("creates checkout URL with plan metadata", async () => {
     const mock = new MockBillingProvider();
@@ -21,14 +25,24 @@ describe("Mock billing provider", () => {
     expect(session.url).toContain("mock=1");
   });
 
-  it("defaults to mock when Stripe key missing", () => {
+  it("defaults to mock outside production when Stripe key missing", () => {
     const prevBilling = process.env.FEATURE_BILLING;
     const prevKey = process.env.STRIPE_SECRET_KEY;
+    const prevEnv = process.env.NODE_ENV;
     process.env.FEATURE_BILLING = "true";
+    setNodeEnv("test");
     delete process.env.STRIPE_SECRET_KEY;
     expect(getBillingProvider().name).toBe("mock");
     process.env.FEATURE_BILLING = prevBilling;
     process.env.STRIPE_SECRET_KEY = prevKey;
+    setNodeEnv(prevEnv);
+  });
+
+  it("uses the disabled provider in production", () => {
+    const prevEnv = process.env.NODE_ENV;
+    setNodeEnv("production");
+    expect(getBillingProvider().name).toBe("disabled");
+    setNodeEnv(prevEnv);
   });
 });
 

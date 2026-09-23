@@ -40,6 +40,7 @@ export default async function TeacherClassDetailPage({ params }: PageProps) {
         </Button>
 
         <ClassDetailTabs
+          classId={classRecord.id}
           className={classRecord.name}
           description={classRecord.description}
           subjectName={classRecord.subject?.name ?? null}

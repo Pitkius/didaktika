@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { lt, tStatus } from "@/lib/i18n";
+import { PrivacyPanel } from "@/features/account/privacy-panel";
 
 export default async function SchoolAdminSettingsPage() {
   const session = await requireSchoolAdmin();
@@ -45,6 +46,11 @@ export default async function SchoolAdminSettingsPage() {
             <div className="flex justify-between"><span className="text-neutral-500">{lt.teacher.integrityMonitoring}</span><Badge variant={school.settings?.integrityMonitoring ? "success" : "secondary"}>{school.settings?.integrityMonitoring ? lt.common.on : lt.common.off}</Badge></div>
             <div className="flex justify-between"><span className="text-neutral-500">{sa.maxStudentsPerClass}</span><span className="font-medium">{school.settings?.maxStudentsPerClass ?? 40}</span></div>
             <div className="flex justify-between"><span className="text-neutral-500">{sa.studentSelfRegistration}</span><Badge variant={school.settings?.allowStudentSignup ? "success" : "secondary"}>{school.settings?.allowStudentSignup ? sa.allowed : lt.common.disabled}</Badge></div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <PrivacyPanel />
           </CardContent>
         </Card>
       </div>

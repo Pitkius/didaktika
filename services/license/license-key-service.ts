@@ -178,59 +178,77 @@ export class LicenseKeyService {
     const userId = applyToSchool ? undefined : params.userId;
     const endsAt = endsAtFromDuration(key.durationDays);
 
-    const subscription = await billingService.applyPlanChange({
-      plan: key.plan,
-      userId,
-      schoolId,
-      eventType: "LICENSE_KEY_REDEEMED",
-      endsAt,
-      metadata: {
-        licenseKeyId: key.id,
-        codeHash: createHash("sha256").update(code).digest("hex").slice(0, 16),
-      },
-    });
+    try {
+      return await db.$transaction(async (tx) => {
+        const claimed = await tx.licenseKey.updateMany({
+          where: {
+            id: key.id,
+            status: "ACTIVE",
+            redemptionCount: { lt: key.maxRedemptions },
+          },
+          data: { redemptionCount: { increment: 1 } },
+        });
+        if (claimed.count !== 1) return { error: "Raktas jau panaudotas." as const };
 
-    const redemption = await db.licenseKeyRedemption.create({
-      data: {
-        keyId: key.id,
-        userId: params.userId,
-        schoolId: schoolId ?? params.schoolId ?? null,
-        subscriptionId: subscription.id,
-      },
-    });
+        const fresh = await tx.licenseKey.findUnique({ where: { id: key.id } });
+        if (fresh && fresh.redemptionCount >= fresh.maxRedemptions) {
+          await tx.licenseKey.update({ where: { id: key.id }, data: { status: "EXHAUSTED" } });
+        }
 
-    const nextCount = key.redemptionCount + 1;
-    await db.licenseKey.update({
-      where: { id: key.id },
-      data: {
-        redemptionCount: nextCount,
-        status: nextCount >= key.maxRedemptions ? "EXHAUSTED" : "ACTIVE",
-      },
-    });
+        const subscription = await billingService.applyPlanChange(
+          {
+            plan: key.plan,
+            userId,
+            schoolId,
+            eventType: "LICENSE_KEY_REDEEMED",
+            endsAt,
+            metadata: {
+              licenseKeyId: key.id,
+              codeHash: createHash("sha256").update(code).digest("hex").slice(0, 16),
+            },
+          },
+          tx
+        );
 
-    await db.auditLog.create({
-      data: {
-        actorId: params.userId,
-        action: "LICENSE_KEY_REDEEMED",
-        targetType: "LicenseKey",
-        targetId: key.id,
-        schoolId: schoolId ?? params.schoolId ?? null,
-        metadata: {
+        const redemption = await tx.licenseKeyRedemption.create({
+          data: {
+            keyId: key.id,
+            userId: params.userId,
+            schoolId: schoolId ?? params.schoolId ?? null,
+            subscriptionId: subscription.id,
+          },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            actorId: params.userId,
+            action: "LICENSE_KEY_REDEEMED",
+            targetType: "LicenseKey",
+            targetId: key.id,
+            schoolId: schoolId ?? params.schoolId ?? null,
+            metadata: {
+              plan: key.plan,
+              subscriptionId: subscription.id,
+              redemptionId: redemption.id,
+            },
+          },
+        });
+
+        const plan = getPlanDefinition(key.plan);
+        return {
+          success: true as const,
           plan: key.plan,
+          planName: plan.name,
+          endsAt,
           subscriptionId: subscription.id,
-          redemptionId: redemption.id,
-        },
-      },
-    });
-
-    const plan = getPlanDefinition(key.plan);
-    return {
-      success: true as const,
-      plan: key.plan,
-      planName: plan.name,
-      endsAt,
-      subscriptionId: subscription.id,
-    };
+        };
+      }, { isolationLevel: "Serializable" });
+    } catch (error) {
+      const codeName = typeof error === "object" && error && "code" in error ? String(error.code) : "";
+      if (codeName === "P2002") return { error: "Šį raktą jau aktyvavote." as const };
+      if (codeName === "P2034") return { error: "Raktas jau panaudotas." as const };
+      throw error;
+    }
   }
 
   async listKeys(take = 100) {

@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { lt, tStatus } from "@/lib/i18n";
+import { PrivacyPanel } from "@/features/account/privacy-panel";
 
 export default async function TeacherSettingsPage() {
   const session = await requireTeacher();
@@ -48,6 +49,11 @@ export default async function TeacherSettingsPage() {
                 {user.school?.settings?.integrityMonitoring ? lt.common.enabled : lt.common.disabled}
               </Badge>
             </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <PrivacyPanel />
           </CardContent>
         </Card>
       </div>

@@ -5,6 +5,10 @@ import { db } from "@/lib/db";
 import { aiProvider } from "@/services/ai";
 import { aiInsightsService } from "@/services/analytics/ai-insights-service";
 import { notificationService } from "@/services/notifications/notification-service";
+import { entitlementService } from "@/services/entitlements/entitlement-service";
+import { usageService } from "@/services/usage/usage-service";
+import { rateLimit } from "@/lib/security/rate-limit";
+import { isRequiredEmailOperational } from "@/services/email/email-service";
 import {
   AssignmentStatus,
   AssignmentType,
@@ -17,17 +21,32 @@ import { lt } from "@/lib/i18n";
 
 export async function createClassAction(formData: FormData) {
   const session = await requireTeacher();
-  const name = formData.get("name") as string;
+  const name = String(formData.get("name") ?? "").trim();
   const description = formData.get("description") as string;
-  const subjectId = formData.get("subjectId") as string;
+  const subjectId = String(formData.get("subjectId") ?? "");
 
   if (!name) return { error: lt.teacher.classNameRequired };
+  if (!session.user.schoolId) return { error: lt.teacher.schoolRequired };
+
+  const entitlement = await entitlementService.canCreateClass({
+    userId: session.user.id,
+    role: session.user.role,
+    schoolId: session.user.schoolId,
+  });
+  if (!entitlement.allowed) return { error: entitlement.reason ?? lt.billing.limitReached };
+
+  if (subjectId) {
+    const subject = await db.subject.findFirst({
+      where: { id: subjectId, schoolId: session.user.schoolId },
+    });
+    if (!subject) return { error: lt.teacher.classNotFound };
+  }
 
   const classRecord = await db.class.create({
     data: {
       name,
       description: description || null,
-      schoolId: session.user.schoolId!,
+      schoolId: session.user.schoolId,
       teacherId: session.user.id,
       subjectId: subjectId || null,
     },
@@ -68,6 +87,43 @@ export async function createAssignmentAction(params: {
   );
   const defaults = assignmentSecurityDefaults(params.type);
 
+  if (params.classId) {
+    const klass = await db.class.findFirst({
+      where: {
+        id: params.classId,
+        ...(session.user.role === "SUPER_ADMIN"
+          ? {}
+          : session.user.role === "SCHOOL_ADMIN"
+            ? { schoolId: session.user.schoolId ?? "missing-school" }
+            : { teacherId: session.user.id }),
+      },
+    });
+    if (!klass) return { error: lt.teacher.classNotFound };
+  }
+
+  if (params.subjectId && session.user.role !== "SUPER_ADMIN") {
+    const subject = await db.subject.findFirst({
+      where: { id: params.subjectId, schoolId: session.user.schoolId ?? "missing-school" },
+    });
+    if (!subject) return { error: lt.teacher.classNotFound };
+  }
+
+  const questionIds = params.questionIds ? [...new Set(params.questionIds)] : undefined;
+  if (questionIds?.length) {
+    const found = await db.question.count({
+      where: {
+        id: { in: questionIds },
+        isArchived: false,
+        OR: [
+          { createdById: session.user.id },
+          { schoolId: null },
+          ...(session.user.schoolId ? [{ schoolId: session.user.schoolId }] : []),
+        ],
+      },
+    });
+    if (found !== questionIds.length) return { error: lt.teacher.questionsNotAllowed };
+  }
+
   const assignment = await db.assignment.create({
     data: {
       title: params.title,
@@ -86,14 +142,15 @@ export async function createAssignmentAction(params: {
       createdById: session.user.id,
       schoolId: session.user.schoolId,
       status: "DRAFT",
-      questions: params.questionIds
-        ? {
-            create: params.questionIds.map((qId, i) => ({
-              questionId: qId,
-              orderIndex: i,
-            })),
-          }
-        : undefined,
+      questions:
+        questionIds && questionIds.length > 0
+          ? {
+              create: questionIds.map((qId, i) => ({
+                questionId: qId,
+                orderIndex: i,
+              })),
+            }
+          : undefined,
     },
   });
 
@@ -167,26 +224,43 @@ export async function generateQuestionsAction(params: {
   skillId?: string;
 }) {
   const session = await requireTeacher();
+  const count = Math.min(10, Math.max(1, Math.floor(params.count) || 1));
+  const limited = rateLimit(`ai:${session.user.id}`, 30, 60 * 1000);
+  if (!limited.ok) return { error: lt.auth.tooManyAttempts };
 
-  const { entitlementService } = await import("@/services/entitlements/entitlement-service");
-  const { usageService } = await import("@/services/usage/usage-service");
-
-  const entitlement = await entitlementService.canGenerateQuestions({
+  const ctx = {
     userId: session.user.id,
-    role: "TEACHER",
+    role: session.user.role,
     schoolId: session.user.schoolId,
-  });
-  if (!entitlement.allowed) {
-    return { error: entitlement.reason ?? lt.billing.limitReached };
+  };
+
+  if (!(await entitlementService.hasFeature(ctx, "AI_GENERATOR"))) {
+    return { error: lt.billing.limitReached };
   }
 
-  const generated = await aiProvider.generateQuestion({
-    subject: params.subject,
-    topic: params.topic,
-    difficulty: params.difficulty,
-    type: params.type,
-    count: params.count,
-  });
+  const limit = await entitlementService.getLimit(ctx, "AI_QUESTION_GENERATION");
+  const consumed = await usageService.consume(
+    session.user.id,
+    "AI_QUESTION_GENERATION",
+    count,
+    limit,
+    session.user.schoolId
+  );
+  if (!consumed.ok) return { error: lt.billing.limitReached };
+
+  let generated;
+  try {
+    generated = await aiProvider.generateQuestion({
+      subject: params.subject,
+      topic: params.topic,
+      difficulty: params.difficulty,
+      type: params.type,
+      count,
+    });
+  } catch (error) {
+    console.error("Question generation failed:", error);
+    return { error: lt.common.unexpectedError };
+  }
 
   const questions = [];
   for (const e of generated) {
@@ -217,13 +291,6 @@ export async function generateQuestionsAction(params: {
     });
     questions.push(question);
   }
-
-  await usageService.increment(
-    session.user.id,
-    "AI_QUESTION_GENERATION",
-    params.count,
-    session.user.schoolId
-  );
 
   await db.aIInteraction.create({
     data: {
@@ -280,12 +347,30 @@ export async function inviteStudentAction(params: {
   classId?: string;
 }) {
   const session = await requireTeacher();
+  const email = params.email.trim().toLowerCase();
+  if (!email.includes("@")) return { error: lt.validation.invalidEmail };
+  if (!session.user.schoolId) return { error: lt.teacher.schoolRequired };
+  if (!isRequiredEmailOperational()) return { error: lt.auth.emailUnavailable };
+
+  const seats = await entitlementService.canAddStudent({
+    userId: session.user.id,
+    role: session.user.role,
+    schoolId: session.user.schoolId,
+  });
+  if (!seats.allowed) return { error: seats.reason ?? lt.auth.seatsFull };
+
+  if (params.classId) {
+    const klass = await db.class.findFirst({
+      where: { id: params.classId, teacherId: session.user.id, schoolId: session.user.schoolId },
+    });
+    if (!klass) return { error: lt.teacher.classNotFound };
+  }
 
   const invitation = await db.invitation.create({
     data: {
-      email: params.email,
+      email,
       role: "STUDENT",
-      schoolId: session.user.schoolId!,
+      schoolId: session.user.schoolId,
       classId: params.classId,
       sentById: session.user.id,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -305,13 +390,31 @@ export async function inviteStudentAction(params: {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   const inviteUrl = `${appUrl}/register?token=${invitation.token}`;
   const { emailService } = await import("@/services/email/email-service");
-  await emailService.sendInvitation(params.email, inviteUrl);
+  try {
+    await emailService.sendInvitation(email, inviteUrl);
+  } catch (error) {
+    console.error("Invitation email failed:", error);
+    await db.invitation.delete({ where: { id: invitation.id } });
+    return { error: lt.auth.emailUnavailable };
+  }
 
   return { success: true, inviteUrl: `/register?token=${invitation.token}` };
 }
 
 export async function generateClassInsightsAction(classId: string) {
-  await requireTeacher();
+  const session = await requireTeacher();
+  const klass = await db.class.findFirst({
+    where: {
+      id: classId,
+      ...(session.user.role === "SUPER_ADMIN"
+        ? {}
+        : session.user.role === "SCHOOL_ADMIN"
+          ? { schoolId: session.user.schoolId ?? "missing-school" }
+          : { teacherId: session.user.id }),
+    },
+    select: { id: true },
+  });
+  if (!klass) return { error: lt.teacher.classNotFound };
   const insights = await aiInsightsService.generateClassInsights(classId);
   revalidatePath(`/teacher/classes/${classId}`);
   return { success: true, insights };

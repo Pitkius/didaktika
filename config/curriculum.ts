@@ -57,6 +57,14 @@ export const CURRICULUM_SOURCES = [
     title: "Gamtos mokslai 1–4 SMP",
     url: "https://gm1-4.smp.emokykla.lt/",
   },
+  {
+    title: "Matematikos VBE struktūra (NŠA)",
+    url: "https://www.nsa.smsm.lt/wp-content/uploads/2024/11/MAT.pdf",
+  },
+  {
+    title: "Lietuvių kalbos ir literatūros VBE aprašas (NŠA)",
+    url: "https://www.nsa.smsm.lt/wp-content/uploads/2024/11/NSA-VBE-LKL.pdf",
+  },
 ] as const;
 
 /**
@@ -98,11 +106,12 @@ export const PLATFORM_CURRICULUM: CurriculumSubject[] = [
       { key: "text-understanding-primary", name: "Teksto suvokimas", goal: "Rasti pagrindinę mintį, atsakyti į klausimus apie tekstą.", minGrade: 3, maxGrade: 4 },
       { key: "creative-writing-primary", name: "Kūrybinis rašymas", goal: "Kurti pasakojimą chronologiškai.", minGrade: 3, maxGrade: 4 },
       { key: "spelling", name: "Rašyba", goal: "Įtvirtinti rašybos normas.", minGrade: 5, maxGrade: 8 },
-      { key: "punctuation", name: "Skyryba", goal: "Skyrybos ženklai sakinyje ir tekste.", minGrade: 5, maxGrade: 10 },
+      { key: "punctuation", name: "Skyryba", goal: "Skyrybos ženklai sakinyje ir tekste.", minGrade: 5, maxGrade: 12 },
       { key: "text-analysis", name: "Teksto analizė ir suvokimas", goal: "Analizuoti sakytinius ir rašytinius tekstus.", minGrade: 5, maxGrade: 12 },
       { key: "literature", name: "Literatūra", goal: "Skaityti ir aptarti grožinius kūrinius.", minGrade: 5, maxGrade: 12 },
       { key: "essay", name: "Rašinys / samprotavimas", goal: "Kurti argumentuotą tekstą.", minGrade: 9, maxGrade: 12 },
-      { key: "exam-lithuanian", name: "Brandos egzamino ruošimas", goal: "Ruoštis VBE pagal programą.", minGrade: 11, maxGrade: 12 },
+      { key: "reading-vbe", name: "Teksto suvokimas", goal: "Rasti teksto teiginį ir autoriaus požiūrį. VBE kalbėjimo ir rašymo pasiruošimas.", minGrade: 9, maxGrade: 12 },
+      { key: "exam-lithuanian", name: "Brandos egzamino ruošimas", goal: "VBE I dalis yra kalbėjimas, II dalis yra interpretacija arba probleminis svarstymas.", minGrade: 11, maxGrade: 12 },
     ],
   },
   {
@@ -151,8 +160,17 @@ export const PLATFORM_CURRICULUM: CurriculumSubject[] = [
       { key: "linear-equations", name: "Tiesinės lygtys", goal: "Spręsti tiesines lygtis ir nelygybes.", minGrade: 7, maxGrade: 9 },
       { key: "geometry", name: "Geometrija", goal: "Kampai, trikampiai, plotai, tūriai.", minGrade: 7, maxGrade: 11 },
       { key: "quadratic-equations", name: "Kvadratinės lygtys", goal: "Spręsti kvadratines lygtis.", minGrade: 9, maxGrade: 11 },
-      { key: "functions", name: "Funkcijos", goal: "Skaityti grafikus, tirti funkcijas.", minGrade: 9, maxGrade: 12 },
-      { key: "exam-math", name: "Brandos egzamino ruošimas", goal: "VBE tipo užduotys.", minGrade: 11, maxGrade: 12 },
+      { key: "powers-roots", name: "Laipsniai ir šaknys", goal: "9–11 kl. Laipsnių savybės ir šaknys, kaip VBE I dalyje.", minGrade: 9, maxGrade: 11 },
+      { key: "equations-systems", name: "Lygčių sistemos", goal: "Spręsti dviejų tiesinių lygčių sistemas.", minGrade: 9, maxGrade: 10 },
+      { key: "statistics", name: "Statistika", goal: "Vidurkis, mediana, diagrama. 9–11 kl. ir VBE I dalis.", minGrade: 9, maxGrade: 11 },
+      { key: "trigonometry", name: "Trigonometrija", goal: "Stačiojo trikampio sin, cos, tg. VBE formulių rinkinys.", minGrade: 10, maxGrade: 12 },
+      { key: "probability", name: "Tikimybės ir kombinatorika", goal: "Klasikinė tikimybė ir deriniai. A kurse ir atsitiktiniai dydžiai.", minGrade: 10, maxGrade: 12 },
+      { key: "functions", name: "Funkcijos", goal: "Skaityti grafikus, skaičiuoti reikšmes, tirti funkcijas.", minGrade: 9, maxGrade: 12 },
+      { key: "progressions", name: "Progresijos", goal: "Aritmetinė ir geometrinė progresija. III–IV gimnazijos klasė.", minGrade: 11, maxGrade: 12 },
+      { key: "logarithms", name: "Logaritmai (A kursas)", goal: "Logaritmų reikšmės ir savybės. III gimnazijos klasė.", minGrade: 11, maxGrade: 12 },
+      { key: "derivatives", name: "Išvestinės (A kursas)", goal: "Funkcijos išvestinė taške. IV gimnazijos klasė, VBE II dalis.", minGrade: 12, maxGrade: 12 },
+      { key: "olympiad-math", name: "Olimpiadinis mąstymas", goal: "Sunkesni originalūs uždaviniai olimpiadų stiliumi. Oficialūs olimpiadų tekstai čia nekeliami.", minGrade: 9, maxGrade: 12 },
+      { key: "exam-math", name: "Brandos egzamino ruošimas", goal: "VBE I dalies forma: pasirenkamas arba trumpas atsakymas. 40 taškų, 120 min. tipo įgūdžiai.", minGrade: 11, maxGrade: 12 },
     ],
   },
   {

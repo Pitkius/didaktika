@@ -9,6 +9,7 @@ import type {
   TeacherInsight,
   UnderstandingCheck,
 } from "./types";
+import { RealAIProvider } from "./real-provider";
 
 function hashString(str: string): number {
   let hash = 0;
@@ -219,11 +220,46 @@ export class MockAIProvider implements AIProvider {
   }
 }
 
+export class UnavailableAIProvider implements AIProvider {
+  private unavailable(): never {
+    throw new Error("AI is unavailable");
+  }
+
+  async generateQuestion(): Promise<GeneratedQuestion[]> {
+    this.unavailable();
+  }
+  async gradeAnswer(): Promise<GradeResult> {
+    this.unavailable();
+  }
+  async generateHint(): Promise<HintResult> {
+    this.unavailable();
+  }
+  async analyzeMistake(): Promise<MistakeAnalysis> {
+    this.unavailable();
+  }
+  async generateLearningRecommendation(): Promise<LearningRecommendation> {
+    this.unavailable();
+  }
+  async generateTeacherInsight(): Promise<TeacherInsight> {
+    this.unavailable();
+  }
+  async analyzeIntegrity(): Promise<IntegrityAnalysis> {
+    this.unavailable();
+  }
+  async generateUnderstandingCheck(): Promise<UnderstandingCheck> {
+    this.unavailable();
+  }
+  async chat(): Promise<string> {
+    this.unavailable();
+  }
+}
+
 export function createAIProvider(): AIProvider {
-  const provider = process.env.AI_PROVIDER ?? "mock";
-  if (provider === "openai" && process.env.OPENAI_API_KEY) {
-    const { RealAIProvider } = require("./real-provider");
+  if (process.env.AI_PROVIDER === "openai" && process.env.OPENAI_API_KEY) {
     return new RealAIProvider();
+  }
+  if (process.env.NODE_ENV === "production") {
+    return new UnavailableAIProvider();
   }
   return new MockAIProvider();
 }

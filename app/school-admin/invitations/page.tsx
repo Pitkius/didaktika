@@ -3,6 +3,7 @@ import { AppShell } from "@/components/layout/app-sidebar";
 import { db } from "@/lib/db";
 import { Card, CardContent } from "@/components/ui/card";
 import { InvitationsList } from "@/features/school-admin/invitations-list";
+import { CreateInvitationForm } from "@/features/school-admin/create-invitation-form";
 import { lt } from "@/lib/i18n";
 
 export default async function SchoolAdminInvitationsPage() {
@@ -25,6 +26,7 @@ export default async function SchoolAdminInvitationsPage() {
 
         <Card>
           <CardContent className="pt-6">
+            <CreateInvitationForm />
             <InvitationsList invitations={invitations} />
           </CardContent>
         </Card>

@@ -33,6 +33,9 @@ export class ResendEmailProvider implements EmailProvider {
   async send(payload: EmailPayload) {
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
+      if (process.env.NODE_ENV === "production") {
+        throw new Error("RESEND_API_KEY missing");
+      }
       console.warn("[email:resend] RESEND_API_KEY missing — using console fallback");
       return new ConsoleEmailProvider().send(payload);
     }
@@ -61,6 +64,11 @@ export class ResendEmailProvider implements EmailProvider {
     const data = (await res.json()) as { id?: string };
     return { id: data.id ?? `resend_${Date.now()}` };
   }
+}
+
+export function isRequiredEmailOperational(): boolean {
+  if (process.env.NODE_ENV !== "production") return true;
+  return process.env.EMAIL_PROVIDER?.toLowerCase() === "resend" && Boolean(process.env.RESEND_API_KEY);
 }
 
 export function createEmailProvider(): EmailProvider {

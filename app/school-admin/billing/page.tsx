@@ -54,8 +54,9 @@ export default async function SchoolAdminBillingPage() {
                   Būsena: {tStatus(subscription.status)} · Vietos: {subscription.seatsLimit}
                 </p>
               )}
-              <Button asChild>
-                <Link href="/pricing">{lt.billing.upgrade}</Link>
+              <p className="text-sm text-neutral-500">{lt.billing.paymentsUnavailable}</p>
+              <Button asChild variant="outline">
+                <Link href="/contact">{lt.billing.manageBilling}</Link>
               </Button>
             </CardContent>
           </Card>

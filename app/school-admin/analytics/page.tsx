@@ -5,6 +5,10 @@ import { db } from "@/lib/db";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { lt } from "@/lib/i18n";
 
+function weekAgo() {
+  return new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+}
+
 export default async function SchoolAdminAnalyticsPage() {
   const session = await requireSchoolAdmin();
   const schoolId = session.user.schoolId!;
@@ -16,7 +20,7 @@ export default async function SchoolAdminAnalyticsPage() {
       where: {
         assignment: { class: { schoolId } },
         status: { in: ["SUBMITTED", "GRADED"] },
-        submittedAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+        submittedAt: { gte: weekAgo() },
       },
     }),
     db.subject.count({ where: { schoolId } }),

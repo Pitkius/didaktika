@@ -51,7 +51,7 @@ export default async function TeacherQuestionsPage({ searchParams }: PageProps) 
 
         <Card>
           <CardContent className="pt-6">
-            <form method="eet" className="flex flex-wrap gap-4 items-end">
+            <form method="get" className="flex flex-wrap gap-4 items-end">
               <div>
                 <label htmlFor="subjectId" className="text-sm font-medium">{lt.common.subject}</label>
                 <select

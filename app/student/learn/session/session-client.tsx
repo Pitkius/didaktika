@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,7 +44,7 @@ export default function LearningSessionPage() {
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
-  const [startTime, setStartTime] = useState(Date.now());
+  const startTime = useRef(0);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [aiMessages, setAiMessages] = useState<Message[]>([]);
   const [aiInput, setAiInput] = useState("");
@@ -52,14 +52,11 @@ export default function LearningSessionPage() {
   const [aiLoading, setAiLoading] = useState(false);
 
   const loadQuestion = useCallback(async () => {
-    setLoading(true);
+    const result = await startLearningSessionAction(subjectId);
     setFeedback(null);
     setIsCorrect(null);
     setAnswer("");
     setSelectedOption(null);
-    setStartTime(Date.now());
-
-    const result = await startLearningSessionAction(subjectId);
     if (result.error) {
       toast.error(result.error);
       router.push("/student/learn");
@@ -68,18 +65,36 @@ export default function LearningSessionPage() {
     if (result.question) {
       setQuestion(result.question as Question);
     }
+    startTime.current = Date.now();
     setLoading(false);
   }, [router, subjectId]);
 
   useEffect(() => {
-    loadQuestion();
-  }, [loadQuestion]);
+    let cancelled = false;
+    void (async () => {
+      const result = await startLearningSessionAction(subjectId);
+      if (cancelled) return;
+      if (result.error) {
+        toast.error(result.error);
+        router.push("/student/learn");
+        return;
+      }
+      if (result.question) {
+        setQuestion(result.question as Question);
+      }
+      startTime.current = Date.now();
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router, subjectId]);
 
   async function handleSubmit() {
     if (!question) return;
     setSubmitting(true);
 
-    const timeSpent = Math.round((Date.now() - startTime) / 1000);
+    const timeSpent = Math.round((Date.now() - startTime.current) / 1000);
     let studentAnswer: unknown;
 
     if (question.type === "MULTIPLE_CHOICE" || question.type === "SINGLE_ANSWER") {

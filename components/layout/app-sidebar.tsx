@@ -106,7 +106,7 @@ export function AppSidebar({ area, userName }: AppSidebarProps) {
   const icons = iconMaps[area];
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const NavContent = () => (
+  const navContent = (
     <>
       <div className="flex h-14 items-center border-b border-neutral-200 px-4">
         <Link href="/" className="font-semibold text-brand-900">
@@ -175,7 +175,7 @@ export function AppSidebar({ area, userName }: AppSidebarProps) {
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        <NavContent />
+        {navContent}
       </aside>
     </>
   );

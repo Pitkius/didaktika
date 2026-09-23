@@ -50,7 +50,6 @@ export function AssignmentTakeClient({
   aiAssistance: initialAiAssistance,
   integrityMonitoring: initialMonitoring = false,
   showResultsImmediately: initialShowResults = true,
-  timeLimitMinutes: initialTimeLimit = null,
   questions,
 }: Props) {
   const router = useRouter();
@@ -66,12 +65,11 @@ export function AssignmentTakeClient({
   const [submitting, setSubmitting] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [score, setScore] = useState<{ score: number; maxScore: number } | null>(null);
-  const [startTime, setStartTime] = useState(Date.now());
+  const startTime = useRef(0);
   const [hint, setHint] = useState<string | null>(null);
   const [aiAssistance, setAiAssistance] = useState(initialAiAssistance);
   const [integrityMonitoring, setIntegrityMonitoring] = useState(initialMonitoring);
   const [showResultsImmediately, setShowResultsImmediately] = useState(initialShowResults);
-  const [timeLimitMinutes, setTimeLimitMinutes] = useState(initialTimeLimit);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [blurCount, setBlurCount] = useState(0);
   const loggingRef = useRef(false);
@@ -93,40 +91,41 @@ export function AssignmentTakeClient({
     [submissionId, readOnly, integrityMonitoring]
   );
 
-  const init = useCallback(async () => {
-    setLoading(true);
-    const result = await startOrResumeSubmissionAction(assignmentId);
-    if (result.error) {
-      toast.error(result.error);
-      router.push("/student/assignments");
-      return;
-    }
-    setSubmissionId(result.submissionId ?? null);
-    setReadOnly(!!result.readOnly);
-    setAnswered(new Set(result.answeredQuestionIds ?? []));
-    if (result.score != null && result.maxScore != null) {
-      setScore({ score: result.score, maxScore: result.maxScore });
-    }
-    if (result.aiAssistance) setAiAssistance(result.aiAssistance);
-    if (typeof result.integrityMonitoring === "boolean") {
-      setIntegrityMonitoring(result.integrityMonitoring);
-    }
-    if (typeof result.showResultsImmediately === "boolean") {
-      setShowResultsImmediately(result.showResultsImmediately);
-    }
-    if (result.timeLimitMinutes != null) {
-      setTimeLimitMinutes(result.timeLimitMinutes);
-      if (!result.readOnly) {
-        setSecondsLeft(result.timeLimitMinutes * 60);
-      }
-    }
-    setLoading(false);
-    setStartTime(Date.now());
-  }, [assignmentId, router]);
-
   useEffect(() => {
-    void init();
-  }, [init]);
+    let cancelled = false;
+    void (async () => {
+      const result = await startOrResumeSubmissionAction(assignmentId);
+      if (cancelled) return;
+      if (result.error) {
+        toast.error(result.error);
+        router.push("/student/assignments");
+        return;
+      }
+      setSubmissionId(result.submissionId ?? null);
+      setReadOnly(!!result.readOnly);
+      setAnswered(new Set(result.answeredQuestionIds ?? []));
+      if (result.score != null && result.maxScore != null) {
+        setScore({ score: result.score, maxScore: result.maxScore });
+      }
+      if (result.aiAssistance) setAiAssistance(result.aiAssistance);
+      if (typeof result.integrityMonitoring === "boolean") {
+        setIntegrityMonitoring(result.integrityMonitoring);
+      }
+      if (typeof result.showResultsImmediately === "boolean") {
+        setShowResultsImmediately(result.showResultsImmediately);
+      }
+      setSecondsLeft(
+        !result.readOnly && typeof result.secondsRemaining === "number"
+          ? result.secondsRemaining
+          : null
+      );
+      startTime.current = Date.now();
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [assignmentId, router]);
 
   // Integrity: tab visibility, blur, paste, copy, context menu
   useEffect(() => {
@@ -215,7 +214,7 @@ export function AssignmentTakeClient({
       submissionId,
       questionId: current.question.id,
       answer: studentAnswer,
-      timeSpentSeconds: Math.round((Date.now() - startTime) / 1000),
+      timeSpentSeconds: Math.round((Date.now() - startTime.current) / 1000),
     });
     setSubmitting(false);
 
@@ -424,7 +423,7 @@ export function AssignmentTakeClient({
                   setHint(null);
                   setAnswer("");
                   setSelectedOption(null);
-                  setStartTime(Date.now());
+                  startTime.current = Date.now();
                 }}
               >
                 {lt.common.back}
@@ -438,7 +437,7 @@ export function AssignmentTakeClient({
                   setHint(null);
                   setAnswer("");
                   setSelectedOption(null);
-                  setStartTime(Date.now());
+                  startTime.current = Date.now();
                 }}
               >
                 {lt.common.next}

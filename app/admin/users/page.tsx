@@ -42,7 +42,7 @@ export default async function AdminUsersPage({ searchParams }: PageProps) {
 
         <Card>
           <CardContent className="pt-6">
-            <form method="eet" className="flex flex-wrap gap-4 items-end">
+            <form method="get" className="flex flex-wrap gap-4 items-end">
               <div>
                 <label htmlFor="role" className="text-sm font-medium">{a.filterRole}</label>
                 <select

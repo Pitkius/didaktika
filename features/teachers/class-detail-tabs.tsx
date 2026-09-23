@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { lt, tStatus } from "@/lib/i18n";
+import { InviteStudentForm } from "@/features/teachers/invite-student-form";
 
 interface ClassMember {
   id: string;
@@ -20,6 +21,7 @@ interface ClassAssignment {
 }
 
 interface ClassDetailTabsProps {
+  classId: string;
   className: string;
   description: string | null;
   subjectName: string | null;
@@ -37,6 +39,7 @@ const tabs = [
 ];
 
 export function ClassDetailTabs({
+  classId,
   className,
   description,
   subjectName,
@@ -117,6 +120,9 @@ export function ClassDetailTabs({
               ))}
             </ul>
           )}
+          <div className="border-t border-neutral-200 p-4">
+            <InviteStudentForm classId={classId} />
+          </div>
         </div>
       )}
 

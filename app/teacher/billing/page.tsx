@@ -8,7 +8,6 @@ import { Progress } from "@/components/ui/progress";
 import { entitlementService } from "@/services/entitlements/entitlement-service";
 import { billingService } from "@/services/billing/billing-service";
 import { getPlanDefinition, formatPlanPrice } from "@/config/plans";
-import { startCheckoutAction } from "@/features/billing/actions";
 import { RedeemLicenseKeyForm } from "@/features/license/redeem-form";
 import { lt, tStatus } from "@/lib/i18n";
 
@@ -51,18 +50,10 @@ export default async function TeacherBillingPage() {
               {schoolSub && (
                 <p className="text-sm text-neutral-500">Būsena: {tStatus(schoolSub.status)}</p>
               )}
-              <div className="flex flex-wrap gap-2">
-                {summary.plan !== "TEACHER" && (
-                  <form action={startCheckoutAction}>
-                    <input type="hidden" name="plan" value="TEACHER" />
-                    <input type="hidden" name="returnPath" value="/teacher/billing" />
-                    <Button type="submit">{lt.billing.upgrade} → TEACHER</Button>
-                  </form>
-                )}
-                <Button asChild variant="outline">
-                  <Link href="/pricing">{lt.billing.manageBilling}</Link>
-                </Button>
-              </div>
+              <p className="text-sm text-neutral-500">{lt.billing.paymentsUnavailable}</p>
+              <Button asChild variant="outline">
+                <Link href="/pricing">{lt.billing.manageBilling}</Link>
+              </Button>
             </CardContent>
           </Card>
 

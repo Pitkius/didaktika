@@ -2,15 +2,20 @@ import { db } from "@/lib/db";
 import { getPlanDefinition } from "@/config/plans";
 import { getBillingProvider } from "@/services/billing/providers";
 import { featureFlags } from "@/config/feature-flags";
-import type { SubscriptionPlan } from "@prisma/client";
+import { isCheckoutAvailable } from "@/lib/billing/checkout-policy";
+import type { Prisma, SubscriptionPlan } from "@prisma/client";
+
+type DbClient = Prisma.TransactionClient | typeof db;
 
 export class BillingService {
   private provider = getBillingProvider();
 
   isConfigured(): boolean {
-    return featureFlags.BILLING_ENABLED && this.provider.name === "stripe"
-      ? this.provider.isConfigured()
-      : featureFlags.BILLING_ENABLED;
+    return featureFlags.BILLING_ENABLED && this.provider.isConfigured();
+  }
+
+  isCheckoutAvailable(): boolean {
+    return isCheckoutAvailable();
   }
 
   usesMockProvider() {
@@ -31,17 +36,20 @@ export class BillingService {
     });
   }
 
-  async createSubscription(params: {
-    plan: SubscriptionPlan;
-    schoolId?: string;
-    userId?: string;
-    endsAt?: Date | null;
-    eventType?: string;
-    metadata?: Record<string, unknown>;
-  }) {
+  async createSubscription(
+    params: {
+      plan: SubscriptionPlan;
+      schoolId?: string;
+      userId?: string;
+      endsAt?: Date | null;
+      eventType?: string;
+      metadata?: Record<string, unknown>;
+    },
+    client: DbClient = db
+  ) {
     const def = getPlanDefinition(params.plan);
     const now = new Date();
-    return db.subscription.create({
+    return client.subscription.create({
       data: {
         schoolId: params.schoolId,
         userId: params.userId,
@@ -70,7 +78,11 @@ export class BillingService {
     successUrl: string;
     cancelUrl: string;
   }) {
-    const session = await this.provider.createCheckoutSession({
+    if (!this.isCheckoutAvailable()) {
+      throw new Error("Online checkout is disabled");
+    }
+
+    return this.provider.createCheckoutSession({
       plan: params.plan,
       customerEmail: params.email,
       successUrl: params.successUrl,
@@ -81,38 +93,36 @@ export class BillingService {
         plan: params.plan,
       },
     });
-
-    if (this.provider.name === "mock") {
-      await this.applyPlanChange({
-        plan: params.plan,
-        userId: params.userId,
-        schoolId: params.schoolId,
-        eventType: "MOCK_CHECKOUT_COMPLETED",
-      });
-    }
-
-    return session;
   }
 
-  async applyPlanChange(params: {
-    plan: SubscriptionPlan;
-    userId?: string;
-    schoolId?: string;
-    eventType?: string;
-    endsAt?: Date | null;
-    metadata?: Record<string, unknown>;
-  }) {
+  async applyPlanChange(
+    params: {
+      plan: SubscriptionPlan;
+      userId?: string;
+      schoolId?: string;
+      eventType?: string;
+      endsAt?: Date | null;
+      metadata?: Record<string, unknown>;
+    },
+    client: DbClient = db
+  ) {
     const def = getPlanDefinition(params.plan);
     const existing = params.schoolId
-      ? await this.getSchoolSubscription(params.schoolId)
+      ? await client.subscription.findFirst({
+          where: { schoolId: params.schoolId, status: { in: ["ACTIVE", "TRIALING"] } },
+          orderBy: { createdAt: "desc" },
+        })
       : params.userId
-        ? await this.getUserSubscription(params.userId)
+        ? await client.subscription.findFirst({
+            where: { userId: params.userId, status: { in: ["ACTIVE", "TRIALING"] } },
+            orderBy: { createdAt: "desc" },
+          })
         : null;
 
     const now = new Date();
 
     if (existing) {
-      return db.subscription.update({
+      return client.subscription.update({
         where: { id: existing.id },
         data: {
           plan: params.plan,
@@ -131,14 +141,17 @@ export class BillingService {
       });
     }
 
-    return this.createSubscription({
-      plan: params.plan,
-      userId: params.userId,
-      schoolId: params.schoolId,
-      endsAt: params.endsAt,
-      eventType: params.eventType,
-      metadata: params.metadata,
-    });
+    return this.createSubscription(
+      {
+        plan: params.plan,
+        userId: params.userId,
+        schoolId: params.schoolId,
+        endsAt: params.endsAt,
+        eventType: params.eventType,
+        metadata: params.metadata,
+      },
+      client
+    );
   }
 
   getPlanFeatures(plan: SubscriptionPlan) {

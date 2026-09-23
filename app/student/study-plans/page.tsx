@@ -55,11 +55,10 @@ export default async function StudentStudyPlansPage() {
           take: 3,
         });
 
-  const actions = [
-    "15–20 min. praktika silpniausiam įgūdžiui",
-    "Peržiūrėkite klaidų sąrašą ir pakartokite 3 klausimus",
-    "Paprašykite DI mokytojo paaiškinimo prieš kitą testą",
-  ];
+  const actions =
+    skills.length > 0
+      ? skills.map((p) => `${p.skill.name} · ${p.skill.topic.subject.name}`)
+      : [];
 
   return (
     <AppShell area="student" userName={`${session.user.firstName} ${session.user.lastName}`}>
@@ -102,11 +101,15 @@ export default async function StudentStudyPlansPage() {
             <CardTitle className="text-base">{lt.student.studyPlanActions}</CardTitle>
           </CardHeader>
           <CardContent>
-            <ol className="list-decimal space-y-2 pl-5 text-sm text-neutral-700">
-              {actions.map((a) => (
-                <li key={a}>{a}</li>
-              ))}
-            </ol>
+            {actions.length === 0 ? (
+              <p className="text-neutral-500">{lt.student.startLearningProfiles}</p>
+            ) : (
+              <ol className="list-decimal space-y-2 pl-5 text-sm text-neutral-700">
+                {actions.map((a) => (
+                  <li key={a}>{a}</li>
+                ))}
+              </ol>
+            )}
           </CardContent>
         </Card>
       </div>
